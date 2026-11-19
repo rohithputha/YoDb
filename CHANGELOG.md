@@ -34,6 +34,11 @@
   the gold answer and evidence sets; a harness that runs a system (the gold-plan pipeline is built in) and
   records answers, evidence, validity, latency, tokens and repairs; a scorer for answer EM/F1, source F1,
   plan validity, provenance F1, latency percentiles and bootstrap intervals.
+- `planner/`: the natural-language planner. A question becomes a typed plan of one or two queries; YoDb validates
+  it before anything runs and the coded error goes back to the model for at most two repairs. Three schema
+  representations (full typed catalog, descriptions only, SSSI-retrieved typed fragments with hybrid lexical +
+  vector retrieval), a JSON Schema of the output for grammar-constrained decoding, generators for an
+  OpenAI-compatible endpoint (vLLM guided JSON), in-process transformers and a scripted one; a benchmark system.
 
 - Rules. A rule is a name, a definition for the reader, a condition (a filter) and a `visible` flag, written
   per dataset in `rules.yaml`. A query uses one as `{"rule": "paying"}`, anywhere a condition can go and on either
