@@ -29,6 +29,11 @@
   a loader (tables by COPY, review embeddings with the shipped provider into a pgvector column with an
   HNSW index, an AGE graph of friendships, reviews and categories), a catalog with column joins, graph
   edges and rules, three example queries and twenty smoke-test queries.
+- `benchmark/`: 34 question templates instantiated into 240 questions (60 single-source, 60 independent
+  multi-source, 80 dependent chains, 40 stress cases) with gold typed plans, source kinds and oracle SQL for
+  the gold answer and evidence sets; a harness that runs a system (the gold-plan pipeline is built in) and
+  records answers, evidence, validity, latency, tokens and repairs; a scorer for answer EM/F1, source F1,
+  plan validity, provenance F1, latency percentiles and bootstrap intervals.
 
 - Rules. A rule is a name, a definition for the reader, a condition (a filter) and a `visible` flag, written
   per dataset in `rules.yaml`. A query uses one as `{"rule": "paying"}`, anywhere a condition can go and on either
