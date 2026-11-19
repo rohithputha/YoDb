@@ -133,7 +133,7 @@ class SimilarOperator:
                 )
             )
         term: BoundSimilarPredicate = claim.terms[0]  # type: ignore[assignment]
-        if semantic_predicates(claim.remaining):
+        if semantic_predicates(query.where):          # the original filter: another extension may have claimed its term already
             raise QueryError(
                 ErrorDetail(
                     code=ErrorCode.QUERY_FEATURE_NOT_SUPPORTED,
