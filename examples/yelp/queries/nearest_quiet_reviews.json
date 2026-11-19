@@ -1,0 +1,6 @@
+{"from": {"dataset": "review"},
+ "select": ["stars", "text"],
+ "where": {"all": [
+   {"rule": "positive"},
+   {"similar": {"field": "text", "text": "a quiet, relaxed atmosphere, good for conversation", "top": 10}}
+ ]}}

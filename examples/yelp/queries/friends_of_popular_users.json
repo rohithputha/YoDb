@@ -1,0 +1,6 @@
+{"from": {"dataset": "user"},
+ "select": ["name", "fans"],
+ "where": {"field": "fans", "op": "gte", "value": 200},
+ "traverse": [{"relationship": "user_friends_with", "as": "friend", "select": ["name", "review_count"]}],
+ "order_by": [{"field": "fans", "direction": "desc"}],
+ "page": {"first": 20}}

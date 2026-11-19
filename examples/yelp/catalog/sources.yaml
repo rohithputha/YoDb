@@ -1,0 +1,70 @@
+api_version: yodb/v0.2
+sources:
+  yelp:
+    kind: postgres
+    connection_ref: yelp
+    read_only: true
+    graph:
+      name: yelp_graph
+      vertices:
+        business: {label: Business, id_property: id}
+        user:     {label: User,     id_property: id}
+        category: {label: Category, id_property: id}
+    datasets:
+      business:
+        resource: yelp.business
+        identity: [id]
+        fields:
+          id:           {physical_name: business_id}
+          name:         {physical_name: name}
+          city:         {physical_name: city}
+          state:        {physical_name: state}
+          stars:        {physical_name: stars}
+          review_count: {physical_name: review_count}
+          is_open:      {physical_name: is_open}
+          categories:   {physical_name: categories}
+          latitude:     {physical_name: latitude}
+          longitude:    {physical_name: longitude}
+      review:
+        resource: yelp.review
+        identity: [id]
+        fields:
+          id:          {physical_name: review_id}
+          business_id: {physical_name: business_id}
+          user_id:     {physical_name: user_id}
+          stars:       {physical_name: stars}
+          useful:      {physical_name: useful}
+          text:        {physical_name: text}
+          date:        {physical_name: date}
+        embeddings:
+          text: {column: text_embedding, model: BAAI/bge-small-en-v1.5, dimensions: 384, metric: cosine}
+      user:
+        resource: yelp.users
+        identity: [id]
+        fields:
+          id:            {physical_name: user_id}
+          name:          {physical_name: name}
+          review_count:  {physical_name: review_count}
+          yelping_since: {physical_name: yelping_since}
+          fans:          {physical_name: fans}
+          average_stars: {physical_name: average_stars}
+          elite:         {physical_name: elite}
+      category:
+        resource: yelp.category
+        identity: [id]
+        fields:
+          id:   {physical_name: category_id}
+          name: {physical_name: name}
+resolution:
+  business:
+    identity_source: yelp
+    field_sources: {id: yelp, name: yelp, city: yelp, state: yelp, stars: yelp, review_count: yelp, is_open: yelp, categories: yelp, latitude: yelp, longitude: yelp}
+  review:
+    identity_source: yelp
+    field_sources: {id: yelp, business_id: yelp, user_id: yelp, stars: yelp, useful: yelp, text: yelp, date: yelp}
+  user:
+    identity_source: yelp
+    field_sources: {id: yelp, name: yelp, review_count: yelp, yelping_since: yelp, fans: yelp, average_stars: yelp, elite: yelp}
+  category:
+    identity_source: yelp
+    field_sources: {id: yelp, name: yelp}

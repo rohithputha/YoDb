@@ -142,6 +142,8 @@ yodb query catalog/ '{"from": {"dataset": "customer"}, "select": ["name", "plan"
 ```
 
 [examples/shop/README.md](examples/shop/README.md) has more queries to try.
+[examples/yelp](examples/yelp) loads a sample of the Yelp Open Dataset with review
+embeddings and a graph of friendships, reviews and categories: a data layer spanning all three kinds of data.
 
 ## Use it from Python
 

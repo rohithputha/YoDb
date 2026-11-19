@@ -1,0 +1,43 @@
+api_version: yodb/v0.2
+catalog: {name: yelp, version: 1}
+datasets:
+  business:
+    description: A business listed on Yelp (a restaurant, shop, service...).
+    aliases: [place, venue, restaurant]
+    fields:
+      id:           {type: id,     description: Yelp business id.}
+      name:         {type: string, description: Business name., example_values: ["Starbucks", "Pat's King of Steaks"]}
+      city:         {type: string, description: City., example_values: ["Philadelphia", "Tucson", "Nashville"]}
+      state:        {type: string, description: Two-letter state or province code., example_values: ["PA", "AZ", "TN"]}
+      stars:        {type: float,  description: "Average star rating, 1.0 to 5.0 in steps of 0.5."}
+      review_count: {type: int,    description: "Number of reviews on Yelp (all of them, not only the sampled ones)."}
+      is_open:      {type: bool,   description: Whether the business is still open.}
+      categories:   {type: string, description: "Comma-separated category names, as Yelp lists them.", example_values: ["Restaurants, Mexican", "Coffee & Tea, Cafes"]}
+      latitude:     {type: float,  description: Latitude.}
+      longitude:    {type: float,  description: Longitude.}
+  review:
+    description: A review a user wrote about a business.
+    fields:
+      id:          {type: id,        description: Yelp review id.}
+      business_id: {type: id,        description: The reviewed business.}
+      user_id:     {type: id,        description: The author; null when the author is outside the sample.}
+      stars:       {type: float,     description: "The rating given, 1 to 5."}
+      useful:      {type: int,       description: How many users found the review useful.}
+      text:        {type: text,      description: The review text., semantic_eligible: true}
+      date:        {type: timestamp, description: When it was written.}
+  user:
+    description: A Yelp user.
+    aliases: [reviewer, person]
+    fields:
+      id:            {type: id,        description: Yelp user id.}
+      name:          {type: string,    description: First name.}
+      review_count:  {type: int,       description: Reviews the user has written on Yelp.}
+      yelping_since: {type: timestamp, description: When the account was created.}
+      fans:          {type: int,       description: Number of fans.}
+      average_stars: {type: float,     description: The user's average rating.}
+      elite:         {type: string,    description: Comma-separated years of elite status; null when never elite.}
+  category:
+    description: A Yelp business category.
+    fields:
+      id:   {type: id,     description: The category name in lower_snake_case., example_values: ["restaurants", "coffee_tea", "nightlife"]}
+      name: {type: string, description: The category name as Yelp shows it., example_values: ["Restaurants", "Coffee & Tea", "Nightlife"]}

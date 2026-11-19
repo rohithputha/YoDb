@@ -25,6 +25,10 @@
   `describe_catalog` mark a field `"similar": true` when its embeddings are in the configured model's space.
 - Operators `traverse` (edge_join) and `similarity_search` (ranked_read, ranked_store) are implemented.
 - End-to-end suite `tests/e2e/age` with a Dockerfile (PostgreSQL 16 + Apache AGE + pgvector).
+- `examples/yelp`: the Yelp Open Dataset as a data layer. A deterministic sampler (seed + record IDs),
+  a loader (tables by COPY, review embeddings with the shipped provider into a pgvector column with an
+  HNSW index, an AGE graph of friendships, reviews and categories), a catalog with column joins, graph
+  edges and rules, three example queries and twenty smoke-test queries.
 
 - Rules. A rule is a name, a definition for the reader, a condition (a filter) and a `visible` flag, written
   per dataset in `rules.yaml`. A query uses one as `{"rule": "paying"}`, anywhere a condition can go and on either

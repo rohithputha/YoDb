@@ -1,0 +1,6 @@
+{"from": {"dataset": "category"},
+ "where": {"field": "id", "op": "eq", "value": "coffee_tea"},
+ "traverse": [{"relationship": "business_in_category", "as": "business", "direction": "reverse",
+               "select": ["name", "city", "stars"], "where": {"rule": "popular_favorite"}}],
+ "order_by": [{"field": "business.stars", "direction": "desc"}],
+ "page": {"first": 20}}

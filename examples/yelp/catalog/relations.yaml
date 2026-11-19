@@ -1,0 +1,55 @@
+api_version: yodb/v0.2
+relationships:
+  review_of_business:
+    from: review
+    to: business
+    description: The business a review is about (a column join).
+    aliases: [reviewed_business]
+    cardinality: many_to_one
+    direction: bi
+    implementations:
+      - from: {source: yelp, field: business_id}
+        to: {source: yelp, field: id}
+  user_wrote_review:
+    from: user
+    to: review
+    description: The reviews a user wrote (a column join; only reviews whose author is in the sample).
+    aliases: [reviews_by, authored]
+    cardinality: one_to_many
+    direction: bi
+    implementations:
+      - from: {source: yelp, field: id}
+        to: {source: yelp, field: user_id}
+  user_reviewed_business:
+    from: user
+    to: business
+    description: The businesses a user has reviewed (a graph edge, one per user-business pair).
+    aliases: [visited, reviewed]
+    cardinality: many_to_many
+    direction: bi
+    implementations:
+      - from: {source: yelp, field: id}
+        to: {source: yelp, field: id}
+        edge_type: REVIEWED
+  user_friends_with:
+    from: user
+    to: user
+    description: The friends of a user (a graph edge; friendship is stored in both directions).
+    aliases: [friends]
+    cardinality: many_to_many
+    direction: uni
+    implementations:
+      - from: {source: yelp, field: id}
+        to: {source: yelp, field: id}
+        edge_type: FRIENDS_WITH
+  business_in_category:
+    from: business
+    to: category
+    description: The categories a business is listed under (a graph edge).
+    aliases: [categories_of, in_category]
+    cardinality: many_to_many
+    direction: bi
+    implementations:
+      - from: {source: yelp, field: id}
+        to: {source: yelp, field: id}
+        edge_type: IN_CATEGORY

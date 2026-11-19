@@ -1,0 +1,32 @@
+api_version: yodb/v0.2
+rules:
+  business:
+    - name: highly_rated
+      definition: Businesses rated 4.5 stars or more.
+      condition: {field: stars, op: gte, value: 4.5}
+    - name: well_reviewed
+      definition: Businesses with at least 100 reviews on Yelp.
+      condition: {field: review_count, op: gte, value: 100}
+    - name: open_now
+      definition: Businesses that are still open.
+      condition: {field: is_open, op: eq, value: true}
+    - name: popular_favorite
+      definition: An open, highly rated business with at least 100 reviews.
+      condition: {all: [{rule: highly_rated}, {rule: well_reviewed}, {rule: open_now}]}
+  review:
+    - name: positive
+      definition: Reviews of 4 stars or more.
+      condition: {field: stars, op: gte, value: 4}
+    - name: negative
+      definition: Reviews of 2 stars or less.
+      condition: {field: stars, op: lte, value: 2}
+    - name: helpful
+      definition: Reviews at least 5 users found useful.
+      condition: {field: useful, op: gte, value: 5}
+  user:
+    - name: active_reviewer
+      definition: Users with 50 or more reviews on Yelp.
+      condition: {field: review_count, op: gte, value: 50}
+    - name: ever_elite
+      definition: Users who were Yelp Elite in at least one year.
+      condition: {field: elite, op: is_not_null}
