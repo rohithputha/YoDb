@@ -8,6 +8,7 @@ repair count.
 
     PYTHONPATH=src python benchmark/harness.py gold --questions benchmark/questions.jsonl --out runs/gold.jsonl
     PYTHONPATH=src python benchmark/harness.py gold --split held_out --repeat 5 --warm-up
+    PYTHONPATH=src python benchmark/harness.py planner --endpoint http://localhost:8000/v1 --schema retrieved
 
 ``--repeat N`` runs every question N times after an optional warm-up and keeps every timing
 (the proposal's latency protocol); the scorer uses the medians per question.
@@ -44,6 +45,7 @@ class Prediction:
     sources: list[str] = field(default_factory=list)           # kinds of source used: relational, vector, graph
     error: str | None = None                                   # the error code when it refused or failed
     refused: bool = False                                      # it declined to answer (asked, or said it cannot)
+    refusal_code: str | None = None                            # the system's own reason code when it refused
     plan_valid: bool | None = None                             # the final query validated (None: no query)
     latency_ms: float | None = None                            # end to end
     retrieval_ms: float | None = None                          # database work only, when the system can tell
@@ -227,7 +229,7 @@ def run(system: System, questions: Sequence[Mapping[str, Any]], out: Path, *, re
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("system", choices=["gold"], help="which system to run (planner systems register here as they are built)")
+    parser.add_argument("system", choices=["gold", "planner"], help="gold: each question's gold plan through YoDb; planner: the natural-language planner")
     parser.add_argument("--questions", type=Path, default=HERE / "questions.jsonl")
     parser.add_argument("--out", type=Path, default=None, help="predictions file (default runs/<system>.jsonl)")
     parser.add_argument("--catalog", type=Path, default=HERE.parent / "examples" / "yelp" / "catalog")
@@ -239,6 +241,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--embedding-model", default="BAAI/bge-small-en-v1.5")
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("-q", "--quiet", action="store_true")
+    planner_options = parser.add_argument_group("planner", "options of the natural-language planner")
+    planner_options.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
+    planner_options.add_argument("--endpoint", default=None, help="an OpenAI-compatible chat endpoint (e.g. vLLM: http://localhost:8000/v1); without it the model runs in-process with transformers")
+    planner_options.add_argument("--schema", choices=["full", "descriptions", "retrieved"], default="full", help="the schema representation shown to the model (RQ3)")
+    planner_options.add_argument("--repairs", type=int, default=2)
+    planner_options.add_argument("--top-k", type=int, default=12, help="entries the SSSI keeps for the retrieved representation")
+    planner_options.add_argument("--no-grammar", action="store_true", help="do not constrain decoding with the output JSON Schema")
+    planner_options.add_argument("--no-examples", action="store_true")
     args = parser.parse_args(argv)
 
     import yodb
@@ -247,10 +257,22 @@ def main(argv: list[str] | None = None) -> int:
     questions = load_questions(args.questions, split=args.split, classes=set(args.classes) if args.classes else None, only=args.only)
     out = args.out or HERE / "runs" / f"{args.system}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
-    needs_embedder = any("similar" in json.dumps(q["plan"]) for q in questions)
+    needs_embedder = args.system == "planner" or any("similar" in json.dumps(q["plan"]) for q in questions)
     embedder = FastEmbedProvider(args.embedding_model) if needs_embedder else None
     with yodb.connect(args.catalog, embedder=embedder) as db:
-        system = GoldPlanSystem(db, timeout=args.timeout)
+        if args.system == "gold":
+            system: System = GoldPlanSystem(db, timeout=args.timeout)
+        else:
+            from planner import NaturalLanguagePlanner, PlannerConfig
+            from planner.llm import OpenAICompatibleGenerator, TransformersGenerator
+            from planner.sssi import SchemaIndex
+
+            generator = OpenAICompatibleGenerator(args.model, base_url=args.endpoint) if args.endpoint else TransformersGenerator(args.model)
+            index = SchemaIndex(db.catalog, embedder) if args.schema == "retrieved" else None
+            config = PlannerConfig(representation=args.schema, repairs=args.repairs, grammar=not args.no_grammar, top_k=args.top_k,
+                                   examples=not args.no_examples, timeout=args.timeout)
+            system = NaturalLanguagePlanner(db, generator, config, index=index)
+            out = args.out or HERE / "runs" / f"{system.name}.jsonl"
         predictions = run(system, questions, out, repeat=args.repeat, warm_up=args.warm_up, quiet=args.quiet)
     print(f"wrote {len(predictions)} predictions to {out}")
     return 0
