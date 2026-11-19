@@ -173,6 +173,22 @@ read from the policies of the client being served, so they stay true if you
 change a policy. The catalog is read when the server starts;
 restart the server to pick up a changed catalog.
 
+## With a similarity search
+
+`yodb mcp --embedding-model BAAI/bge-small-en-v1.5 catalog/` (or `yodb.connect(..., embedder=...)`
+from Python) lets the agent use a [similarity search](/query/similarity-search):
+`describe_catalog` marks each field embedded with that model `"similar": true`, the `query` tool
+explains the `{"similar": ...}` condition, and an answer carries each row's distance and rank:
+
+```json
+{"rows": [...], "row_count": 3,
+ "similar": {"field": "body", "top": 3, "records_ranked": 3, "records_returned": 3, "exact": true,
+             "ranked": [{"id": "t06", "rank": 1, "distance": 0.051}, {"id": "t12", "rank": 2, "distance": 0.183}, ...]}}
+```
+
+A relationship stored as edges of an Apache AGE graph is listed as traversable with
+`"on": "graph edge HAS_TICKET (customer.id -> ticket.id)"`; the agent uses it like any other.
+
 ## With a semantic filter
 
 `yodb mcp` does not configure the [semantic filter](/query/semantic-filter),

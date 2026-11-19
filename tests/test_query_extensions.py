@@ -94,7 +94,7 @@ def bind(raw, terms=TERMS):
 
 class RegistryTests(unittest.TestCase):
     def test_keys_are_unique_and_lookups_work(self) -> None:
-        self.assertEqual(TERMS.keys(), ("semantic", "exactly"))
+        self.assertEqual(TERMS.keys(), ("semantic", "similar", "exactly"))
         self.assertIs(TERMS.by_key("exactly"), EXACTLY)
         self.assertIsNone(TERMS.by_key("nope"))
         with self.assertRaises(ValueError):

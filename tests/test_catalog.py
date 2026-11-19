@@ -214,7 +214,7 @@ class CatalogLoaderTests(unittest.TestCase):
             "relationship_graph:\n    kind: postgres",
         )
         with catalog_directory(sources=invalid_sources) as directory:
-            with self.assertRaisesRegex(CatalogValidationError, "must be neo4j"):
+            with self.assertRaisesRegex(CatalogValidationError, "Apache AGE"):
                 load_catalog(directory)
 
     def test_requires_a_resolution_for_every_dataset(self) -> None:

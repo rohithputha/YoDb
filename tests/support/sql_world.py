@@ -8,7 +8,10 @@ predicate or an ``IN`` list really selects; use the plain fakes where it does no
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
+from math import sqrt
 from pathlib import Path
+import re
 import sqlite3
 import threading
 from tempfile import TemporaryDirectory
@@ -44,8 +47,36 @@ def evaluation(datasets: str, sources: str, relations: str, rules: str | None = 
     )
 
 
+def _vector(text):
+    return [float(x) for x in json.loads(text)]
+
+
+def _cosine(a, b):
+    a, b = _vector(a), _vector(b)
+    dot = sum(x * y for x, y in zip(a, b))
+    norm = sqrt(sum(x * x for x in a)) * sqrt(sum(y * y for y in b))
+    return 1.0 - (dot / norm if norm else 0.0)
+
+
+def _l2(a, b):
+    return sqrt(sum((x - y) ** 2 for x, y in zip(_vector(a), _vector(b))))
+
+
+def _inner(a, b):
+    return -sum(x * y for x, y in zip(_vector(a), _vector(b)))
+
+
+# pgvector's distance operators, as SQLite functions over vectors stored as JSON text.
+_DISTANCE_OPERATORS = {"<=>": "yodb_cosine", "<->": "yodb_l2", "<#>": "yodb_inner"}
+_DISTANCE = re.compile(r'("[^"]+") (<=>|<->|<#>) %s::vector')
+
+
 class SqlWorld:
-    """Executes compiled PostgreSQL-dialect scans against in-memory tables."""
+    """Executes compiled PostgreSQL-dialect scans against in-memory tables.
+
+    A ranked scan (``ORDER BY "col" <=> %s::vector``) works too: a vector column holds
+    each vector as JSON text, and the distance operators become SQLite functions.
+    """
 
     source_kind = SourceKind.POSTGRES
 
@@ -54,6 +85,9 @@ class SqlWorld:
 
         self._db = sqlite3.connect(":memory:", check_same_thread=False)
         weakref.finalize(self, self._db.close)          # closed when the world is garbage, so tests need no cleanup
+        self._db.create_function("yodb_cosine", 2, _cosine, deterministic=True)
+        self._db.create_function("yodb_l2", 2, _l2, deterministic=True)
+        self._db.create_function("yodb_inner", 2, _inner, deterministic=True)
         attached = set()
         for resource, (columns, rows) in tables.items():
             schema, table = resource.split(".")
@@ -68,7 +102,8 @@ class SqlWorld:
     def execute(self, query, *, timeout_seconds=None):
         with self._lock:
             self.queries.append(query)
-            rows = self._db.execute(query.sql.replace("%s", "?"), query.parameters).fetchall()
+            sql = _DISTANCE.sub(lambda m: f"{_DISTANCE_OPERATORS[m.group(2)]}({m.group(1)}, %s)", query.sql)
+            rows = self._db.execute(sql.replace("%s", "?"), query.parameters).fetchall()
         names = [column.logical_field for column in query.output_columns]
         return tuple(dict(zip(names, row)) for row in rows)
 

@@ -110,7 +110,7 @@ If `public.accounts` also has `billing_contact_email` but it is not in this
 file, YoDb cannot expose or use it. Add a declared dataset field and explicit
 mapping before it becomes accessible.
 
-## `embeddings`: vectors for the semantic filter
+## `embeddings`: vectors for similarity search and the semantic filter
 
 A representation may declare where the vectors of a text field are stored:
 
@@ -136,4 +136,11 @@ The field must be a `string` or `text` field marked `semantic_eligible: true`.
 The vectors may sit in the source that owns the text, or in a *vector store*:
 a separate source whose representation maps only the dataset identity and
 declares the `embeddings`. A field's embeddings are declared once across all
-sources. See [Semantic filter](/query/semantic-filter).
+sources. See [Similarity search](/query/similarity-search) and [Semantic filter](/query/semantic-filter).
+
+## `graph`: an Apache AGE graph for relationships stored as edges
+
+A PostgreSQL source may declare the AGE graph it holds and which vertex label stands
+for which dataset; a relationship implementation with an `edge_type` on this source
+then follows those edges. A source that holds only a graph may leave `datasets` empty.
+See [Graphs](/catalog/graphs).

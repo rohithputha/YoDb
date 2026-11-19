@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from ..catalog import SourceKind
-from ..planning import RemoteScan
+from ..planning import GraphEdgeScan, RemoteScan
 from ..query.resolution import SourceResolvedQuery
 
 
@@ -50,6 +50,9 @@ class QueryCompilerAdapter(Protocol):
     def compile_scan(self, scan: RemoteScan) -> CompiledQuery:
         """Compile one planner-validated physical remote scan fragment."""
 
+    def compile_edges(self, scan: GraphEdgeScan) -> CompiledQuery:
+        """Compile one read of graph edges (a :class:`GraphEdgeScan` with its IDs filled in)."""
+
 
 @dataclass(frozen=True)
 class CompiledPostgresQuery:
@@ -65,6 +68,9 @@ class CompiledPostgresQuery:
     sql: str
     parameters: tuple[object, ...]
     output_columns: tuple[CompiledOutputColumn, ...]
+    # A server extension the statement needs loaded in the session (``"age"`` for a Cypher call);
+    # the executor loads it when it may, and names it when the statement fails for its absence.
+    requires_extension: str | None = None
 
     @property
     def source_kind(self) -> SourceKind:

@@ -134,6 +134,16 @@ WHERE con.contype = 'f'
 GROUP BY n.nspname, c.relname, con.oid, target_namespace.nspname, target_table.relname
 ORDER BY resource_name, constraint_name
 """
+# Apache AGE's own catalog: every graph and its vertex ('v') and edge ('e') labels.  Read only when the
+# extension is installed; it needs no LOAD, so a read-only role can inspect a graph before using it.
+_GRAPHS_SQL = """/* yodb:graphs */
+SELECT g.name::text AS graph_name,
+       l.name::text AS label_name,
+       l.kind::text AS label_kind
+FROM ag_catalog.ag_label AS l
+JOIN ag_catalog.ag_graph AS g ON g.graphid = l.graph
+ORDER BY graph_name, label_name
+"""
 _INDEXES_SQL = """/* yodb:indexes */
 SELECT n.nspname || '.' || c.relname AS resource_name,
        index_class.relname AS index_name,
@@ -193,6 +203,11 @@ class PostgresSourceInspector:
                     constraint_rows = _fetch_rows(cursor, _KEYS_AND_CHECKS_SQL)
                     foreign_key_rows = _fetch_rows(cursor, _FOREIGN_KEYS_SQL)
                     index_rows = _fetch_rows(cursor, _INDEXES_SQL)
+                    graph_rows = (
+                        _fetch_rows(cursor, _GRAPHS_SQL)
+                        if any(str(row.get("extname")) == "age" for row in extension_rows)
+                        else []
+                    )
                 finally:
                     cursor.close()
 
@@ -205,6 +220,7 @@ class PostgresSourceInspector:
                 constraint_rows,
                 foreign_key_rows,
                 index_rows,
+                graph_rows,
             )
         except YoDbError:
             raise      # already safe and specific (a connection that was refused, a missing reference, ...)
@@ -243,6 +259,9 @@ class PostgresCatalogValidator:
                 inspected_at=inspection.inspected_at,
                 findings=tuple(findings),
             )
+
+        if source.graph is not None:
+            findings.extend(_validate_graph(catalog, source.graph, inspection))
 
         for dataset_name, representation in source.datasets.items():
             location = f"sources.{inspection.source_name}.datasets.{dataset_name}"
@@ -316,6 +335,46 @@ class PostgresCatalogValidator:
         )
 
 
+def _validate_graph(catalog: Catalog, graph, inspection: SourceInspection) -> list[ValidationFinding]:
+    """The declared AGE graph, its vertex labels and the edge types the relationships use must exist."""
+
+    location = f"sources.{inspection.source_name}.graph"
+    if "age" not in inspection.extensions:
+        return [
+            _error(
+                "extension_not_installed",
+                "The catalog declares a graph, but the Apache AGE extension is not installed in this PostgreSQL source.",
+                location,
+            )
+        ]
+    found = (inspection.provider_metadata.get("graphs") or {}).get(graph.name)
+    if found is None:
+        return [_error("graph_not_found", f"Graph '{graph.name}' was not found in Apache AGE.", f"{location}.name")]
+    findings = []
+    for dataset_name, vertex in graph.vertices.items():
+        if vertex.label not in found.get("vertex_labels", ()):
+            findings.append(
+                _error(
+                    "vertex_label_not_found",
+                    f"Vertex label '{vertex.label}' was not found in graph '{graph.name}'.",
+                    f"{location}.vertices.{dataset_name}.label",
+                )
+            )
+    for relationship_name, relationship in catalog.relationships.items():
+        for implementation in relationship.implementations:
+            if implementation.edge_type is None or implementation.from_endpoint.source != inspection.source_name:
+                continue
+            if implementation.edge_type not in found.get("edge_types", ()):
+                findings.append(
+                    _error(
+                        "edge_type_not_found",
+                        f"Edge type '{implementation.edge_type}' was not found in graph '{graph.name}'.",
+                        f"relationships.{relationship_name}.implementations.edge_type",
+                    )
+                )
+    return findings
+
+
 def _fetch_rows(cursor: PostgresCursor, query: str) -> list[dict[str, Any]]:
     cursor.execute(query)
     rows = cursor.fetchall()
@@ -338,6 +397,7 @@ def _build_inspection(
     constraint_rows: list[dict[str, Any]],
     foreign_key_rows: list[dict[str, Any]],
     index_rows: list[dict[str, Any]],
+    graph_rows: list[dict[str, Any]] = (),
 ) -> SourceInspection:
     fields_by_resource: dict[str, dict[str, PhysicalField]] = defaultdict(dict)
     for row in column_rows:
@@ -430,6 +490,16 @@ def _build_inspection(
     if vector_indexes:
         capabilities.add(InspectionCapability.VECTOR_INDEXES)
 
+    graphs: dict[str, dict[str, list[str]]] = {}
+    for row in graph_rows:
+        graph = graphs.setdefault(str(row["graph_name"]), {"vertex_labels": [], "edge_types": []})
+        label, kind = str(row["label_name"]), str(row["label_kind"])
+        if label.startswith("_ag_label_"):
+            continue                      # AGE's own default labels
+        graph["vertex_labels" if kind == "v" else "edge_types"].append(label)
+    if graphs:
+        capabilities.add(InspectionCapability.GRAPH_SCHEMA)
+
     version = _as_optional_string(version_rows[0].get("server_version")) if version_rows else None
     return SourceInspection(
         source_name=request.source_name,
@@ -439,6 +509,7 @@ def _build_inspection(
         capabilities=frozenset(capabilities),
         resources=resources,
         extensions=extensions,
+        provider_metadata={"graphs": graphs} if graphs else {},
     )
 
 

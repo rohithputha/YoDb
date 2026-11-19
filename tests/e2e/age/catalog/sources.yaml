@@ -1,0 +1,38 @@
+api_version: yodb/v0.2
+sources:
+  shop:
+    kind: postgres
+    connection_ref: e2e-shop
+    read_only: true
+    graph:
+      name: shop_graph
+      vertices:
+        customer: {label: Customer, id_property: id}
+        ticket:   {label: Ticket,   id_property: id}
+    datasets:
+      customer:
+        resource: shop.customers
+        identity: [id]
+        fields:
+          id:      {physical_name: customer_id}
+          name:    {physical_name: name}
+          country: {physical_name: country}
+          seats:   {physical_name: seats}
+      ticket:
+        resource: shop.tickets
+        identity: [id]
+        fields:
+          id:       {physical_name: ticket_id}
+          subject:  {physical_name: subject}
+          status:   {physical_name: status}
+          priority: {physical_name: priority}
+          body:     {physical_name: body}
+        embeddings:
+          body: {column: body_embedding, model: toy-v1, dimensions: 5, metric: cosine}
+resolution:
+  customer:
+    identity_source: shop
+    field_sources: {id: shop, name: shop, country: shop, seats: shop}
+  ticket:
+    identity_source: shop
+    field_sources: {id: shop, subject: shop, status: shop, priority: shop, body: shop}

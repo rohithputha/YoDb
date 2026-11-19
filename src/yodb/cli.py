@@ -141,7 +141,12 @@ def _query(args: argparse.Namespace) -> int:
         result = db.query(query, timeout_seconds=args.timeout)
     rows = [dict(row) for row in result.rows]
     if args.format == "json":
-        print(json.dumps({"rows": _jsonable(rows), "query_fingerprint": result.query_fingerprint, "applied": _jsonable(result.applied)}, indent=2))
+        answer = {"rows": _jsonable(rows), "query_fingerprint": result.query_fingerprint, "applied": _jsonable(result.applied)}
+        if "similar" in result.reports:
+            from .mcp_server import _similar_report
+
+            answer["similar"] = _similar_report(result.reports["similar"])
+        print(json.dumps(answer, indent=2))
     elif args.format == "jsonl":
         for row in rows:
             print(json.dumps(_jsonable(row)))
@@ -172,9 +177,23 @@ def _open(args: argparse.Namespace) -> YoDb:
     return YoDb.connect(
         args.catalog,
         _connections(args.connections),
+        embedder=_embedder(getattr(args, "embedding_model", None)),
         statistics=not args.no_statistics,
         statement_timeout_seconds=args.statement_timeout,
     )
+
+
+def _embedder(model_name: str | None):
+    """The local embedding model behind ``--embedding-model``, so queries may hold a similarity search."""
+
+    if model_name is None:
+        return None
+    from .embeddings import FastEmbedProvider
+
+    try:
+        return FastEmbedProvider(model_name)
+    except RuntimeError as error:
+        raise UsageError(str(error)) from error
 
 
 def _connections(path: str | None) -> Mapping[str, str] | None:
@@ -268,6 +287,9 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--no-statistics", action="store_true", help="plan with the fixed rules only")
             command.add_argument("--statement-timeout", type=float, default=60.0, metavar="SECONDS",
                                  help="database statement timeout when --timeout is not given (default 60)")
+            command.add_argument("--embedding-model", metavar="NAME",
+                                 help="a local fastembed model (e.g. BAAI/bge-small-en-v1.5) that embeds the text of a "
+                                      "similarity search; the catalog's embeddings must use the same model")
 
     catalog = commands.add_parser("catalog", help="list the datasets and fields (no database needed)")
     common(catalog, connects=False)

@@ -26,6 +26,7 @@ class OperatorKind(str, Enum):
     # Extensions beyond relational algebra
     SEMANTIC_FILTER = "semantic_filter"
     TRAVERSE = "traverse"
+    SIMILARITY_SEARCH = "similarity_search"
 
 
 class OperatorCategory(str, Enum):
@@ -105,8 +106,16 @@ _SPECS: tuple[OperatorSpec, ...] = (
         ("verify_all", "vector_shortlist"),
     ),
     OperatorSpec(
-        _K.TRAVERSE, _C.EXTENSION, _S.PLANNED, "Traverse",
-        "Follow a declared relationship across a bounded number of hops.",
+        _K.TRAVERSE, _C.EXTENSION, _S.IMPLEMENTED, "Traverse",
+        "Follow a relationship stored as graph edges (one hop): the graph returns the edges of one type for a batch "
+        "of IDs, and YoDb joins the two datasets' rows over them.",
+        ("edge_join",), requires=(_K.SCAN,),
+    ),
+    OperatorSpec(
+        _K.SIMILARITY_SEARCH, _C.EXTENSION, _S.IMPLEMENTED, "Similarity search",
+        "Keep the K records whose text is nearest to a query text in embedding space, among the records matching "
+        "the other conditions, ranked by distance.",
+        ("ranked_read", "ranked_store"), requires=(_K.VECTOR_SEARCH,),
     ),
 )
 

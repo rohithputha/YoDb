@@ -52,9 +52,9 @@ def execute(ctx: ExecutionContext, node: RecordAssembly, run: Run) -> tuple[Logi
         rows = _read(ctx, scan, keys if step.restrict else None, node.maximum_transfer_keys, node.maximum_key_batches, run)
         if step.role is StepRole.ANCHOR:
             anchor_rows = rows
-        elif step.role is StepRole.SHORTLIST:
-            pass                      # a ranking of IDs: it narrows, it never contributes fields
         else:
+            # A shortlist step is a ranking of IDs: it narrows and carries no dataset field, but it may
+            # bring helper values (the distance of each ranked ID), which are merged like any other.
             enrichment.append((scan, rows))
         if step.role is StepRole.REQUIRED:
             required_done += 1

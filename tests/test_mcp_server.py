@@ -218,7 +218,7 @@ class HelperTests(unittest.TestCase):
     def test_a_relationship_is_described_by_the_implementation_a_query_would_use(self) -> None:
         from types import SimpleNamespace as N
 
-        edge = N(edge_type="KNOWS", from_endpoint=N(field="id"), to_endpoint=N(field="id"))
+        edge = N(edge_type="KNOWS", from_endpoint=N(source="helpdesk", field="id"), to_endpoint=N(source="helpdesk", field="id"))
         fields = N(edge_type=None, from_endpoint=N(field="id"), to_endpoint=N(field="customer_id"))
         base = dict(from_dataset="customer", to_dataset="ticket", description="d", aliases=(), cardinality=N(value="one_to_many"), direction="uni")
         from yodb.mcp_server import _describe_relationship

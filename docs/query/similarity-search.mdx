@@ -1,0 +1,98 @@
+---
+title: Similarity search
+description: Rank records by how close their text is to a text you give, with pgvector.
+---
+
+A [semantic filter](/query/semantic-filter) asks whether a sentence is *true* of
+a record and needs a model to judge each one. A **similarity search** asks a
+cheaper question: which records are *nearest* to a text, in the embedding space
+their text was stored in. It is answered by the database alone (pgvector), returns
+a ranking with distances, and never judges anything: the nearest records come back
+even when none is really about the text.
+
+```json
+{"from": {"dataset": "ticket"},
+ "select": ["subject", "body"],
+ "where": {"all": [
+   {"field": "status", "op": "eq", "value": "open"},
+   {"similar": {"field": "body", "text": "the delivery arrived late and damaged", "top": 20}}
+ ]}}
+```
+
+This keeps the 20 open tickets whose `body` is nearest to the text, nearest first.
+
+## The condition
+
+| Key | Meaning |
+| --- | --- |
+| `field` | A public `string`/`text` field marked `semantic_eligible` in `datasets.yaml`, with embeddings declared in `sources.yaml` |
+| `text` | What to compare with, at most 1,000 characters |
+| `top` | How many nearest records to keep (optional; default the page size; at most 1,000) |
+
+One per query, at the top of `where` or inside `all`, never under `any` or `not`,
+and not together with a semantic condition. The other conditions decide which
+records are candidates; the search ranks *those* and keeps the `top` nearest.
+
+**Order.** Without `order_by`, rows come back nearest first and the page is the
+`first` nearest. With `order_by`, the `top` nearest records are sorted by it.
+
+**Distances.** `result.reports["similar"]` holds, per returned row, its distance
+(smaller is nearer; cosine distance for a `cosine` binding) and rank, plus how
+many rows were ranked and whether the result is exact. The MCP `query` tool
+returns them under `"similar"`.
+
+## What you need
+
+- Embeddings for the field in `sources.yaml` (`embeddings: {body: {column: ..., model: ..., dimensions: ..., metric: cosine}}`),
+  next to the text or in a separate vector-store source (see [Semantic filter](/query/semantic-filter)).
+- An **embedding provider** whose model name and dimensions equal the binding's. YoDb ships one
+  over [fastembed](https://github.com/qdrant/fastembed) (`pip install "yodb[semantic]"`):
+
+```python
+import yodb
+from yodb.embeddings import FastEmbedProvider
+
+embedder = FastEmbedProvider("BAAI/bge-small-en-v1.5")      # 384 dimensions
+with yodb.connect("catalog/", embedder=embedder) as db:
+    result = db.query({...})
+    for row in result.rows:
+        print(row["id"], result.reports["similar"].records[row["id"]].distance)
+```
+
+The same provider fills the vector column when you load data (`embedder.embed_texts(texts)`),
+and serves a semantic filter's shortlist. On the command line, `--embedding-model BAAI/bge-small-en-v1.5`
+enables the search for `yodb query`, `yodb explain` and `yodb mcp`. A semantic runtime that
+has an embedder serves similarity searches too, without a second provider.
+
+`db.describe()` and the MCP `describe_catalog` mark a field `"similar": true` when it has
+embeddings in the configured model's space.
+
+## How it runs
+
+The planner puts the ranking where the vectors are:
+
+- **In the identity source:** the read of that source becomes `WHERE <the pushed conditions>
+  ORDER BY embedding <=> $query LIMIT top`, so the ranking is among the records that
+  satisfy the conditions and the result is **exact**. Conditions on another source are
+  applied first and the ranked read is restricted to their IDs.
+- **In a separate vector store:** the store returns the `top` nearest IDs and the
+  identity source is read for them. With no other condition this is exact; with one,
+  the store ranks before the condition is applied, so fewer than `top` rows may
+  qualify. The plan and the report say `approximate` then.
+
+The `explain` output shows a `remote_scan` with `vector_search=... top N` and a
+`similar_rank` step. It is refused, with the reasons, when it could not run exactly:
+no embeddings for the field, no provider or one in another space, a condition the
+source cannot apply before ranking (`contains`, `starts_with`, or one that mixes
+sources), or a vector store whose IDs could not be transferred.
+
+In a join (`traverse`), the search may sit in the top-level `where` only: it ranks
+the `from` rows first (that side always drives), `top` defaults to the join's page,
+and without `order_by` the joined rows keep the ranking. It is refused in a step's `where`.
+
+## Limits
+
+- One search per query; `top` at most 1,000 (and at most the key-transfer limit for a separate store).
+- pgvector only; the shortlist is an exact scan unless the column has an index.
+- Rows whose vector is NULL are never ranked.
+- Embedding declarations are not validated against the database.

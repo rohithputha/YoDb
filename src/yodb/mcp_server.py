@@ -19,7 +19,7 @@ from collections.abc import Mapping
 import json
 from typing import Any
 
-from .catalog import Catalog, RelationshipSpec, Visibility
+from .catalog import Catalog, RelationshipSpec, Visibility, graph_implementation
 from .cli import _jsonable
 from .client import YoDb
 from .errors import ErrorCode, YoDbError
@@ -101,7 +101,19 @@ records were shortlisted by similarity first: every row returned is a true match
 missing, more so with a small page.first, so do not present such rows as the complete or the top-N answer."""
 
 
-def query_language(limits: Mapping[str, int], *, semantic: bool = False, rules: bool = False) -> str:
+SIMILAR_LANGUAGE = """A similarity search keeps the records whose text is nearest in meaning to a text you give, ranked nearest first:
+  {"similar": {"field": "body", "text": "the delivery arrived late and damaged", "top": 20}}
+The field must be marked "similar": true in describe_catalog. Put it at the top of "where" or inside "all"
+(never under "any" or "not"); one per query, and not together with a semantic condition. "top" (optional;
+default page.first; at most 1,000) is how many nearest records to keep among those matching the other
+conditions. Without order_by the rows come back nearest first; with order_by, the top records are sorted
+by it. The answer's "similar" entry gives each returned row's distance (smaller is nearer) and rank. It is a
+ranking, not a judgement: the nearest records are returned even when none is really about the text, so read
+them before presenting them as matches. It works in the top-level "where" of a traverse query (never in the
+step's "where"), where it ranks the "from" rows first."""
+
+
+def query_language(limits: Mapping[str, int], *, semantic: bool = False, rules: bool = False, similar: bool = False) -> str:
     """The guide an agent reads in the query tool's description, with the limits of the engine it describes."""
 
     guide = QUERY_LANGUAGE.replace("@RULES_FORM@", "\n" + RULES_LANGUAGE if rules else "")
@@ -111,15 +123,31 @@ def query_language(limits: Mapping[str, int], *, semantic: bool = False, rules: 
     ):
         guide = guide.replace(mark, f"{limits[key]:,}")
     guide += RULES_NOTE if rules else ""
+    unavailable = []
+    if not semantic:
+        unavailable.append("semantic conditions (none is configured on this server)")
+    if not similar:
+        unavailable.append("similarity searches (no embedding model is configured on this server)")
+    if len(unavailable) == 2:
+        guide = guide.replace("@NO_SEMANTIC@", f", {unavailable[0]}, and {unavailable[1]}")
+    elif unavailable:
+        guide = guide.replace("@NO_SEMANTIC@", f", and {unavailable[0]}")
+    else:
+        guide = guide.replace("@NO_SEMANTIC@", "")
     if semantic:
-        return guide.replace("@NO_SEMANTIC@", "") + "\n\n" + SEMANTIC_LANGUAGE
-    return guide.replace("@NO_SEMANTIC@", ", and semantic conditions (none is configured on this server)")
+        guide += "\n\n" + SEMANTIC_LANGUAGE
+    if similar:
+        guide += "\n\n" + SIMILAR_LANGUAGE
+    return guide
 
 
-def describe_catalog(catalog: Catalog, *, semantic: bool = False) -> dict[str, Any]:
+def describe_catalog(
+    catalog: Catalog, *, semantic: bool = False, similar: Mapping[str, tuple[str, ...]] | None = None
+) -> dict[str, Any]:
     """What a query may name: datasets with their public fields, and the relationships between them.
 
-    A field is marked ``semantic`` only when ``semantic`` says a semantic condition can be answered.
+    A field is marked ``semantic`` only when ``semantic`` says a semantic condition can be answered, and
+    ``similar`` when ``similar`` (per dataset, the fields embedded with the configured model) lists it.
     """
 
     datasets = {}
@@ -135,6 +163,8 @@ def describe_catalog(catalog: Catalog, *, semantic: bool = False) -> dict[str, A
                 field["example_values"] = _jsonable(list(spec.example_values))
             if spec.semantic_eligible and semantic:
                 field["semantic"] = True
+            if similar and field_name in similar.get(name, ()):
+                field["similar"] = True
             fields[field_name] = field
         rules = {rule.name: rule.definition for rule in catalog.rules.get(name, ()) if rule.visible}
         datasets[name] = {
@@ -161,11 +191,17 @@ def _describe_relationship(catalog: Catalog, relationship: RelationshipSpec) -> 
         "cardinality": relationship.cardinality.value,
         "reversible": relationship.direction == "bi",
     }
-    # the implementation a query would use: the first that compares two fields (as the join planner picks it)
+    # the implementation a query would use: the first that compares two fields (as the join planner picks it),
+    # else the graph edges of a source with a graph engine
     implementation = next((i for i in relationship.implementations if i.edge_type is None), None)
     if implementation is None:
-        described["traversable"] = False
-        described["why_not"] = "It is stored as graph edges, which cannot be traversed yet."
+        edge = next((i for i in relationship.implementations if i.edge_type is not None and graph_implementation(catalog, i)), None)
+        if edge is None:
+            described["traversable"] = False
+            described["why_not"] = "It is stored as graph edges in a source that has no graph engine, so it cannot be traversed."
+            return described
+        described["on"] = f"graph edge {edge.edge_type} ({relationship.from_dataset}.id -> {relationship.to_dataset}.id)"
+        described["traversable"] = True
         return described
     left, right = implementation.from_endpoint.field, implementation.to_endpoint.field
     described["on"] = f"{relationship.from_dataset}.{left} = {relationship.to_dataset}.{right}"
@@ -193,6 +229,7 @@ def build_server(db: YoDb, *, timeout_seconds: float | None = 60.0):
     from mcp.types import ToolAnnotations
 
     semantic, limits = db.semantic_enabled, db.limits
+    similar_fields = db.similar_fields()
     has_rules = any(rule.visible for rules in db.catalog.rules.values() for rule in rules)
     server = MCPServer(SERVER_NAME, instructions=INSTRUCTIONS, log_level="WARNING")
     read_only = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
@@ -212,14 +249,14 @@ def build_server(db: YoDb, *, timeout_seconds: float | None = 60.0):
         annotations=read_only,
     )
     def describe_catalog_tool() -> dict[str, Any]:
-        return guarded(lambda: describe_catalog(db.catalog, semantic=semantic))
+        return guarded(lambda: describe_catalog(db.catalog, semantic=semantic, similar=similar_fields))
 
     @server.tool(
         name="query",
         title="Run a query",
         description="Run one read-only query and return its rows as "
         '{"rows": [...], "row_count": n}. A "note" is added when the page is full and more rows may match.\n\n'
-        + query_language(limits, semantic=semantic, rules=has_rules),
+        + query_language(limits, semantic=semantic, rules=has_rules, similar=bool(similar_fields)),
         annotations=read_only,
     )
     def query_tool(query: dict[str, Any] | str) -> dict[str, Any]:
@@ -230,6 +267,9 @@ def build_server(db: YoDb, *, timeout_seconds: float | None = 60.0):
             report = result.reports.get("semantic")
             if report is not None:
                 answer["semantic"] = _semantic_report(report)
+            ranking = result.reports.get("similar")
+            if ranking is not None:
+                answer["similar"] = _similar_report(ranking)
             if result.applied.get("rules"):
                 answer["applied"] = {"rules": [dict(rule) for rule in result.applied["rules"]]}
             first = _page_size(query, limits["default_page_size"])
@@ -300,6 +340,23 @@ def _semantic_report(report) -> dict[str, Any]:
     if stats.shortlisted is not None:
         described["shortlisted_by_vector_search"] = stats.shortlisted
     return described
+
+
+def _similar_report(report) -> dict[str, Any]:
+    """How a similarity search ran, with each returned row's distance and rank."""
+
+    stats = report.stats
+    return {
+        "field": stats.field,
+        "top": stats.top,
+        "records_ranked": stats.candidates,
+        "records_returned": stats.returned,
+        "exact": stats.exact,
+        "ranked": [
+            {"id": _jsonable(logical_id), "rank": record.rank, "distance": round(record.distance, 6)}
+            for logical_id, record in sorted(report.records.items(), key=lambda item: item[1].rank)
+        ],
+    }
 
 
 def _rule_use(use) -> dict[str, Any]:

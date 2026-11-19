@@ -1,0 +1,110 @@
+---
+title: Graphs (Apache AGE)
+description: Store a relationship as edges in an Apache AGE graph and let a query traverse it.
+---
+
+A relationship is usually a pair of fields that match (`customer.id = ticket.customer_id`).
+Some relationships have no such column: a social graph, a "referred by" link, a
+category network. YoDb can follow those when they are stored as **edges in an
+Apache AGE graph** inside a PostgreSQL source. Nothing else changes: the rows of
+the two datasets stay in their tables (in this or any other source), a query uses
+the same `traverse` step, and the agent sees the same relationship.
+
+## Declaring the graph
+
+A PostgreSQL source may declare one graph. It names the AGE graph and says which
+vertex label stands for which dataset:
+
+```yaml
+sources:
+  graphdb:
+    kind: postgres
+    connection_ref: graphdb
+    read_only: true
+    graph:
+      name: shop_graph                     # as created with ag_catalog.create_graph
+      vertices:
+        customer: {label: Customer, id_property: id}
+        ticket:   {label: Ticket,   id_property: id}
+    datasets: {}                           # a source may hold only a graph
+```
+
+`id_property` (default `id`) is the vertex property holding the dataset's logical
+`id`, **as a string**, exactly as the dataset's identity source stores it. The
+graph does not have to carry anything else: YoDb reads the edges from the graph
+and the rows from the tables.
+
+The graph name, labels, edge types and property names are written into the Cypher
+YoDb generates, so the catalog admits only letters, digits and underscores for them.
+
+A relationship then names the edge type and the graph source at both ends; the
+fields must be each dataset's `id`, because an edge links identities:
+
+```yaml
+relationships:
+  customer_has_ticket:
+    from: customer
+    to: ticket
+    description: A ticket belongs to a customer.
+    cardinality: one_to_many
+    direction: bi
+    implementations:
+      - from: {source: graphdb, field: id}
+        to: {source: graphdb, field: id}
+        edge_type: HAS_TICKET
+```
+
+An edge of type `HAS_TICKET` from a `Customer` vertex to a `Ticket` vertex says
+that customer has that ticket. `direction: bi` lets a query start from either
+end. A relationship may list a field-equality implementation *and* an edge one;
+the field join is used when both exist.
+
+## What `yodb validate` checks
+
+When a source declares a graph, activation also checks, through AGE's own catalog
+(`ag_catalog.ag_graph`, `ag_catalog.ag_label`): that the `age` extension is
+installed, that the graph exists, that every declared vertex label exists, and that
+every edge type a relationship uses on this source exists. A missing one is an
+error, and the catalog does not activate.
+
+## How a traversal runs
+
+A `traverse` over an edge relationship is an **edge join**:
+
+1. the driving side runs as an ordinary query (filters pushed down, guards applied);
+2. its IDs go to the graph in batches of up to 1,000 as the one parameter of a Cypher
+   `MATCH`, which returns the (start, end) pairs of the edges;
+3. the other side is read only for the IDs the edges reach, in batches, with its own filters;
+4. the rows are matched over the pairs, then ordered, paged and projected like any join.
+
+`yodb explain` shows the three parts: the driving plan, a `graph_edge_scan` naming
+the graph and edge type, and the probing plan. The bounds of a field join apply
+(driving rows, probing rows, joined rows); the number of edges one batch may return
+is bounded by the probing-row limit too. A duplicate edge between the same two
+vertices matches once.
+
+The Cypher is fixed by YoDb; a query never contains Cypher, and the only value that
+reaches the graph is the list of IDs, passed as a parameter.
+
+## What the database needs
+
+- PostgreSQL with the `age` extension created in the database, and `vector` if the
+  same source also holds embeddings. `tests/e2e/age/Dockerfile` builds such an image.
+- The AGE library must be loaded in YoDb's sessions. YoDb runs `LOAD 'age'` and
+  ignores a refusal, because only a superuser may `LOAD`. For the read-only role YoDb
+  uses, preload it instead: `ALTER ROLE yodb_ro SET session_preload_libraries = 'age'`
+  (or `shared_preload_libraries = 'age'` on the server), and put `ag_catalog` on its
+  search path: `ALTER ROLE yodb_ro SET search_path = ag_catalog, "$user", public`.
+- `SELECT` on `ag_catalog` and on the graph's own schema (AGE stores a graph in a
+  schema of the same name): `GRANT USAGE ON SCHEMA ag_catalog, shop_graph TO yodb_ro;
+  GRANT SELECT ON ALL TABLES IN SCHEMA ag_catalog, shop_graph TO yodb_ro;`.
+
+`tests/e2e/age/seed.sql` is a complete example, including loading the graph from a table of links.
+
+## Limits
+
+- One hop per query (the general `traverse` limit); no variable-length paths, no edge properties, no edge filters.
+- Edges link dataset identities only; a relationship stored as edges between other fields cannot be declared.
+- Vertex IDs are compared as text: a vertex whose `id` property is the number `7` matches the row whose `id` is `"7"`.
+- `neo4j` is still accepted as a source kind for an edge implementation, but there is no adapter for it:
+  such a relationship is listed as not traversable.

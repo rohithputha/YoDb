@@ -1,0 +1,18 @@
+api_version: yodb/v0.2
+catalog: {name: shop_graph_e2e, version: 1}
+datasets:
+  customer:
+    description: A customer of the shop.
+    fields:
+      id:      {type: id,     description: Identity.}
+      name:    {type: string, description: Name.}
+      country: {type: string, description: Country code.}
+      seats:   {type: int,    description: Seats.}
+  ticket:
+    description: A support ticket.
+    fields:
+      id:       {type: id,     description: Identity.}
+      subject:  {type: string, description: Subject.}
+      status:   {type: string, description: Status., example_values: [open, closed, pending]}
+      priority: {type: int,    description: Priority 1-5.}
+      body:     {type: text,   description: The ticket text., semantic_eligible: true}

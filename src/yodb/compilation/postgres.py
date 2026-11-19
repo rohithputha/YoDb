@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import re
 
 from ..catalog import SourceKind, VectorMetric
 from ..errors import ErrorCode, ErrorDetail, QueryError
@@ -14,7 +16,7 @@ from ..query.models import (
     BoundPredicate,
     ComparisonOperator,
 )
-from ..planning import RemoteScan
+from ..planning import GraphEdgeScan, RemoteScan
 from ..query.resolution import QuerySourceShape, ResolvedField, SourceResolvedQuery
 from .contracts import CompiledOutputColumn, CompiledPostgresQuery
 
@@ -24,6 +26,16 @@ _VECTOR_OPERATORS = {
     VectorMetric.L2: "<->",
     VectorMetric.INNER_PRODUCT: "<#>",
 }
+
+# The column a ranked scan adds when the distance of each row is wanted (a helper field: it is
+# reported beside the rows and never projected into a result).
+DISTANCE_COLUMN = "_distance"
+
+# What the catalog admits for a graph name, label, edge type or property (checked again here,
+# because these names are written into the Cypher text).
+_GRAPH_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# The dollar-quote tag around the Cypher text; the text can only hold identifiers and ``$ids``.
+_CYPHER_TAG = "$yodb_cypher$"
 
 
 _COMPILED_OPERATORS = frozenset(
@@ -130,6 +142,20 @@ class PostgresQueryCompiler:
             f"{_column(field)} AS {_quote_identifier(field.field.name)}" for field in scan.projection
         )
         parameters: list[object] = []
+        with_distance = scan.vector_search is not None and scan.vector_search.return_distance
+        if with_distance:
+            # The distance is selected as well as ordered by, so the same vector is bound twice.
+            vector = scan.vector_search
+            if vector.query_vector is None:
+                _fail(
+                    ErrorCode.QUERY_COMPILATION_UNSUPPORTED,
+                    "A vector-search scan requires the embedded query vector before compilation.",
+                )
+            parameters.append(_vector_literal(vector.query_vector))
+            projections += (
+                f", {_quote_identifier(vector.column)} {_VECTOR_OPERATORS[vector.metric]} %s::vector "
+                f"AS {_quote_identifier(DISTANCE_COLUMN)}"
+            )
         where = _compile_expression(scan.pushed_filter, context, parameters)
         if scan.key_filter is not None:
             if not scan.key_filter:
@@ -155,7 +181,7 @@ class PostgresQueryCompiler:
         if where is not None:
             statements.append(f"WHERE {where}")
         if vector is not None:
-            parameters.append("[" + ",".join(repr(float(x)) for x in vector.query_vector) + "]")
+            parameters.append(_vector_literal(vector.query_vector))
             statements.append(
                 f"ORDER BY {_quote_identifier(vector.column)} {_VECTOR_OPERATORS[vector.metric]} %s::vector, "
                 f"{_column(scan.source.logical_id)} ASC"
@@ -183,7 +209,55 @@ class PostgresQueryCompiler:
             output_columns=tuple(
                 CompiledOutputColumn(sql_alias=field.field.name, logical_field=field.field.name)
                 for field in scan.projection
+            )
+            + ((CompiledOutputColumn(sql_alias=DISTANCE_COLUMN, logical_field=DISTANCE_COLUMN),) if with_distance else ()),
+        )
+
+    def compile_edges(self, scan: GraphEdgeScan) -> CompiledPostgresQuery:
+        """Compile one read of Apache AGE edges: a Cypher ``MATCH`` inside ``ag_catalog.cypher()``.
+
+        The graph name, labels, edge type and property names come from the catalog, which
+        admits only letters, digits and underscores for them; the IDs travel as the one
+        Cypher parameter (``$ids``, an agtype list), never as text in the statement.
+        """
+
+        if scan.source_kind is not SourceKind.POSTGRES:
+            _fail(ErrorCode.QUERY_COMPILATION_UNSUPPORTED, "The PostgreSQL compiler requires a PostgreSQL graph edge scan.")
+        if not scan.ids:
+            _fail(ErrorCode.QUERY_COMPILATION_UNSUPPORTED, "A graph edge scan requires at least one starting ID.")
+        for name in (scan.graph, scan.edge_type, scan.from_label, scan.from_id_property, scan.to_label, scan.to_id_property):
+            if not _GRAPH_IDENTIFIER.fullmatch(name):
+                _fail(ErrorCode.QUERY_COMPILATION_UNSUPPORTED, "A graph name, label or property is not a plain identifier.")
+        if scan.anchored == "from":
+            pattern = (
+                f"(a:{scan.from_label})-[:{scan.edge_type}]->(b:{scan.to_label})"
+            )
+            start, end = f"a.{scan.from_id_property}", f"b.{scan.to_id_property}"
+        else:
+            pattern = (
+                f"(b:{scan.from_label})-[:{scan.edge_type}]->(a:{scan.to_label})"
+            )
+            start, end = f"a.{scan.to_id_property}", f"b.{scan.from_id_property}"
+        cypher = f"UNWIND $ids AS yodb_id MATCH {pattern} WHERE {start} = yodb_id RETURN {start}, {end}"
+        parameters: list[object] = [json.dumps({"ids": list(scan.ids)})]
+        statements = [
+            "SELECT start_id, end_id",
+            f"FROM ag_catalog.cypher('{scan.graph}', {_CYPHER_TAG} {cypher} {_CYPHER_TAG}, %s)",
+            "AS (start_id ag_catalog.agtype, end_id ag_catalog.agtype)",
+        ]
+        if scan.maximum_rows is not None:
+            parameters.append(scan.maximum_rows + 1)
+            statements.append("LIMIT %s")
+        return CompiledPostgresQuery(
+            source_name=scan.source_name,
+            connection_ref=scan.connection_ref,
+            sql="\n".join(statements),
+            parameters=tuple(parameters),
+            output_columns=(
+                CompiledOutputColumn(sql_alias="start_id", logical_field="start_id"),
+                CompiledOutputColumn(sql_alias="end_id", logical_field="end_id"),
             ),
+            requires_extension="age",
         )
 
 
@@ -277,6 +351,10 @@ def _effective_limit(query: SourceResolvedQuery) -> int:
     assert page_limit is not None
     requested_maximum = query.query.constraints.maximum_results
     return min(page_limit, requested_maximum) if requested_maximum is not None else page_limit
+
+
+def _vector_literal(values: tuple[float, ...]) -> str:
+    return "[" + ",".join(repr(float(x)) for x in values) + "]"
 
 
 def _resource(resource: str) -> str:

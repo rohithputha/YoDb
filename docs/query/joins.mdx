@@ -96,8 +96,8 @@ every read exceeds the row guard, is refused even when a database could answer i
 
 ## What a relationship must be
 
-- A **field-equality** implementation: the two fields are compared for equality. (A graph-edge
-  implementation cannot be traversed yet.)
+- A **field-equality** implementation: the two fields are compared for equality; or a **graph-edge**
+  implementation in an Apache AGE graph, followed as an edge join (see [Graphs](/catalog/graphs)).
 - Both fields **public**: a relationship that joins on an internal field is refused, because YoDb must read
   the key.
 - Both fields of the **same type**; the catalog refuses to load a relationship that compares different types.
@@ -112,5 +112,5 @@ the relationship in the catalog is what authorizes the match.
 | `relationship_not_found` | No relationship by that name or alias |
 | `relationship_not_applicable` | The relationship does not start at this dataset, or `reverse` on a one-way relationship |
 | `field_not_accessible` | The relationship joins on an internal field |
-| `query_feature_not_supported` | More than one step, or a graph-edge relationship |
+| `query_feature_not_supported` | More than one step, a graph-edge relationship in a source without a graph engine, or a similarity search in the step |
 | `field_not_found`, `query_operator_not_supported`, ... | A problem inside the traversed side; its `location` starts with `traverse[0]` |
