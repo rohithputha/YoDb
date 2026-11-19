@@ -23,6 +23,9 @@ RULES_FORMAT_VERSION = (0, 2)
 API_VERSION = f"yodb/v{FORMAT_VERSION[0]}.{FORMAT_VERSION[1]}"
 _API_VERSION = re.compile(r"yodb/v(\d+)\.(\d+)")
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
+# A graph name, vertex label, edge type or property name as it is written into Cypher: letters, digits
+# and underscores only, so a catalog value can never carry Cypher or SQL syntax into a statement.
+_GRAPH_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class CatalogValidationError(ValueError):
@@ -137,11 +140,38 @@ class SourceDatasetSpec(StrictModel):
     embeddings: dict[str, EmbeddingBinding] = Field(default_factory=dict)
 
 
+class VertexSpec(StrictModel):
+    """The vertex label of an AGE graph that stands for one dataset.
+
+    ``id_property`` is the vertex property holding the dataset's logical ``id``
+    (as a string, exactly as the dataset's identity source stores it).
+    """
+
+    label: str
+    id_property: str = "id"
+
+
+class GraphSpec(StrictModel):
+    """An Apache AGE graph inside a PostgreSQL source, used to traverse relationships.
+
+    ``name`` is the graph as created with ``create_graph``.  ``vertices`` says which
+    vertex label stands for which dataset; a relationship implementation with an
+    ``edge_type`` on this source then traverses the edges of that type between the
+    two labels.  The graph only has to hold identities and edges: the rows of the
+    datasets stay in their own tables (of this or another source).
+    """
+
+    name: str
+    vertices: dict[str, VertexSpec]
+
+
 class SourceSpec(StrictModel):
     kind: SourceKind
     connection_ref: str
     read_only: Literal[True]
-    datasets: dict[str, SourceDatasetSpec]
+    # A source that only holds a graph (no table of any dataset) may leave this empty.
+    datasets: dict[str, SourceDatasetSpec] = Field(default_factory=dict)
+    graph: GraphSpec | None = None
 
 
 class DatasetResolution(StrictModel):
@@ -300,7 +330,9 @@ def _validate_catalog(catalog: Catalog) -> None:
     for source_name, source in catalog.sources.items():
         if not source.connection_ref.strip():
             raise CatalogValidationError(f"sources.{source_name}.connection_ref must not be blank")
-        _validate_named_mapping(f"sources.{source_name}.datasets", source.datasets)
+        _validate_named_mapping(f"sources.{source_name}.datasets", source.datasets, allow_empty=source.graph is not None)
+        if source.graph is not None:
+            _validate_graph(catalog, source_name, source)
         for dataset_name, representation in source.datasets.items():
             if dataset_name not in catalog.datasets:
                 raise CatalogValidationError(
@@ -435,6 +467,9 @@ def _validate_relationships(catalog: Catalog) -> None:
             )
 
         for implementation in relationship.implementations:
+            if implementation.edge_type is not None:
+                _validate_graph_implementation(catalog, relationship_name, relationship, implementation)
+                continue
             _validate_source_field(
                 catalog,
                 relationship.from_dataset,
@@ -449,19 +484,15 @@ def _validate_relationships(catalog: Catalog) -> None:
                 implementation.to_endpoint.field,
                 f"relationships.{relationship_name}.implementations.to",
             )
-
-            if implementation.edge_type is not None:
-                _validate_graph_implementation(catalog, relationship_name, relationship, implementation)
-            else:
-                from_type = catalog.datasets[relationship.from_dataset].fields[implementation.from_endpoint.field].type
-                to_type = catalog.datasets[relationship.to_dataset].fields[implementation.to_endpoint.field].type
-                if from_type is not to_type:
-                    raise CatalogValidationError(
-                        f"relationships.{relationship_name}.implementations compares "
-                        f"'{relationship.from_dataset}.{implementation.from_endpoint.field}' ({from_type.value}) with "
-                        f"'{relationship.to_dataset}.{implementation.to_endpoint.field}' ({to_type.value}); "
-                        "the two fields must have the same type"
-                    )
+            from_type = catalog.datasets[relationship.from_dataset].fields[implementation.from_endpoint.field].type
+            to_type = catalog.datasets[relationship.to_dataset].fields[implementation.to_endpoint.field].type
+            if from_type is not to_type:
+                raise CatalogValidationError(
+                    f"relationships.{relationship_name}.implementations compares "
+                    f"'{relationship.from_dataset}.{implementation.from_endpoint.field}' ({from_type.value}) with "
+                    f"'{relationship.to_dataset}.{implementation.to_endpoint.field}' ({to_type.value}); "
+                    "the two fields must have the same type"
+                )
 
 
 def _validate_source_field(
@@ -486,36 +517,84 @@ def _validate_source_field(
         )
 
 
+def _validate_graph(catalog: Catalog, source_name: str, source: SourceSpec) -> None:
+    """A graph declaration: an AGE graph in a PostgreSQL source whose vertex labels stand for datasets."""
+
+    location = f"sources.{source_name}.graph"
+    if source.kind is not SourceKind.POSTGRES:
+        raise CatalogValidationError(f"{location} is only supported on a postgres source (Apache AGE)")
+    _validate_graph_identifier(f"{location}.name", source.graph.name)
+    if not source.graph.vertices:
+        raise CatalogValidationError(f"{location}.vertices must name at least one dataset")
+    labels: dict[str, str] = {}
+    for dataset_name, vertex in source.graph.vertices.items():
+        if dataset_name not in catalog.datasets:
+            raise CatalogValidationError(f"{location}.vertices references unknown dataset '{dataset_name}'")
+        _validate_graph_identifier(f"{location}.vertices.{dataset_name}.label", vertex.label)
+        _validate_graph_identifier(f"{location}.vertices.{dataset_name}.id_property", vertex.id_property)
+        if vertex.label in labels:
+            raise CatalogValidationError(
+                f"{location}.vertices: label '{vertex.label}' stands for both '{labels[vertex.label]}' and '{dataset_name}'"
+            )
+        labels[vertex.label] = dataset_name
+
+
+def _validate_graph_identifier(location: str, value: str) -> None:
+    if not _GRAPH_IDENTIFIER.fullmatch(value):
+        raise CatalogValidationError(
+            f"{location} '{value}' must be letters, digits and underscores, starting with a letter or underscore"
+        )
+
+
+def graph_implementation(catalog: Catalog, implementation: RelationshipImplementation) -> bool:
+    """Whether an ``edge_type`` implementation runs on an AGE graph (a postgres source with ``graph``)."""
+
+    source = catalog.sources.get(implementation.from_endpoint.source)
+    return source is not None and source.kind is SourceKind.POSTGRES and source.graph is not None
+
+
 def _validate_graph_implementation(
     catalog: Catalog,
     relationship_name: str,
     relationship: RelationshipSpec,
     implementation: RelationshipImplementation,
 ) -> None:
-    if not implementation.edge_type.strip():
-        raise CatalogValidationError(
-            f"relationships.{relationship_name}.implementations.edge_type must not be blank"
-        )
+    location = f"relationships.{relationship_name}.implementations"
+    _validate_graph_identifier(f"{location}.edge_type", implementation.edge_type)
 
     from_source = implementation.from_endpoint.source
     to_source = implementation.to_endpoint.source
     if from_source != to_source:
-        raise CatalogValidationError(
-            f"relationships.{relationship_name}.implementations with edge_type must use one graph source"
-        )
+        raise CatalogValidationError(f"{location} with edge_type must use one graph source")
 
-    source = catalog.sources[from_source]
+    source = catalog.sources.get(from_source)
+    if source is None:
+        raise CatalogValidationError(f"{location}.from references unknown source '{from_source}'")
+
+    if source.kind is SourceKind.POSTGRES and source.graph is not None:
+        # An AGE edge joins the two datasets' identities: each end must be the dataset's ``id``, and the
+        # graph must have a vertex label for both datasets.
+        for end, dataset_name, endpoint in (
+            ("from", relationship.from_dataset, implementation.from_endpoint),
+            ("to", relationship.to_dataset, implementation.to_endpoint),
+        ):
+            if endpoint.field != "id":
+                raise CatalogValidationError(
+                    f"{location}.{end}.field must be 'id' for a graph edge (an edge links dataset identities)"
+                )
+            if dataset_name not in source.graph.vertices:
+                raise CatalogValidationError(
+                    f"{location} edge source '{from_source}' declares no graph vertex for dataset '{dataset_name}'"
+                )
+        return
+
     if source.kind is not SourceKind.NEO4J:
         raise CatalogValidationError(
-            f"relationships.{relationship_name}.implementations.edge_type source '{from_source}' must be neo4j"
+            f"{location}.edge_type source '{from_source}' must be a postgres source with a 'graph' (Apache AGE) or neo4j"
         )
 
-    for dataset_name in (relationship.from_dataset, relationship.to_dataset):
-        if dataset_name not in source.datasets:
-            raise CatalogValidationError(
-                f"relationships.{relationship_name}.implementations edge source '{from_source}' "
-                f"does not represent dataset '{dataset_name}'"
-            )
+    for dataset_name, endpoint in ((relationship.from_dataset, implementation.from_endpoint), (relationship.to_dataset, implementation.to_endpoint)):
+        _validate_source_field(catalog, dataset_name, endpoint.source, endpoint.field, f"{location}.edge")
 
 
 def _validate_named_mapping(location: str, values: dict[str, Any], *, allow_empty: bool = False) -> None:

@@ -3,6 +3,29 @@
 ## 0.2.0 (unreleased)
 
 ### Added
+- Graph traversal over Apache AGE. A PostgreSQL source may declare a `graph` (the AGE graph name and the
+  vertex label that stands for each dataset); a relationship implementation with an `edge_type` on that
+  source is then followed by `traverse`, as an *edge join*: the driving side's IDs go to the graph in
+  batches as the one parameter of a fixed Cypher `MATCH`, the pairs it returns say which rows match, and
+  the other side is read only for the IDs reached. Same query shape, bounds, `optional`, `direction`,
+  ordering and paging as a field join; `explain` shows a `graph_edge_scan`; the MCP catalog lists the
+  relationship as traversable "over graph edge ...". `yodb validate` checks the graph, its vertex labels
+  and the edge types against AGE's catalog. The read-only role needs AGE preloaded (see docs: Graphs).
+- Similarity search: `{"similar": {"field": "body", "text": "...", "top": 20}}` keeps the `top` records
+  nearest to the text in embedding space among the records matching the other conditions, nearest first,
+  answered by pgvector with no model judging rows. `result.reports["similar"]` (and the MCP answer's
+  `"similar"`) carries each returned row's distance and rank. Exact when the vectors sit in the identity
+  source; a separate vector store ranks before the anchor's conditions and the result says `approximate`.
+  Refused with the reasons when it could not run exactly. Works in the top-level `where` of a traverse query.
+- `yodb.embeddings.FastEmbedProvider`: a library-shipped embedding provider over fastembed
+  (`BAAI/bge-small-en-v1.5` by default; the `semantic` extra), for similarity searches, the semantic
+  filter's shortlist, and loading a vector column (`embed_texts`). `yodb.connect(..., embedder=...)`,
+  `--embedding-model NAME` on the command line; a semantic runtime's embedder serves similarity searches too.
+- `YoDb.similar_enabled`, `YoDb.embedding_model`, `YoDb.similar_fields()`; `describe()` and the MCP
+  `describe_catalog` mark a field `"similar": true` when its embeddings are in the configured model's space.
+- Operators `traverse` (edge_join) and `similarity_search` (ranked_read, ranked_store) are implemented.
+- End-to-end suite `tests/e2e/age` with a Dockerfile (PostgreSQL 16 + Apache AGE + pgvector).
+
 - Rules. A rule is a name, a definition for the reader, a condition (a filter) and a `visible` flag, written
   per dataset in `rules.yaml`. A query uses one as `{"rule": "paying"}`, anywhere a condition can go and on either
   side of a join; YoDb replaces it with its condition before planning, so pushdown, row guards and `explain` work
@@ -23,6 +46,12 @@
   pushed to the database. The coordinator still applies the whole filter, so results are unchanged.
 
 ### Changed
+- A source may declare no `datasets` when it declares a `graph`.
+- A relationship implementation with `edge_type` must sit on a postgres source with a `graph` (or a
+  `neo4j` source, which still has no adapter); its endpoint fields must be `id`.
+- A ranked scan may return each row's distance (`VectorSearch.return_distance`), as the helper field
+  `_distance`, which never reaches a result's rows.
+- `BoundQuery.explicit_order` says whether the caller asked for an order.
 - A catalog file may declare any `api_version` of the same major version up to the one this YoDb reads
   (`yodb/v0.2`), file by file. A newer file is refused. The format version moves only when a file format
   changes.

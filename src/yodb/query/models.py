@@ -203,4 +203,7 @@ class BoundQuery:
     query_fingerprint: str
     catalog_fingerprint: str
     rules: tuple[RuleUse, ...] = ()
+    # Whether the caller asked for an order (``order_by`` always ends with the ``id`` tiebreaker; without a
+    # caller's order it is only that, and a ranking operator may order the page by relevance instead).
+    explicit_order: bool = True
 

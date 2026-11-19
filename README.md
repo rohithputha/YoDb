@@ -4,13 +4,16 @@
 
 YoDb is an experimental query and retrieval engine designed to help AI agents interact with data through a unified interface.
 
-Today, YoDb supports querying across PostgreSQL databases, with query planning and execution capabilities.
+Today, YoDb queries across PostgreSQL databases: relational tables, vector embeddings
+(pgvector) and graph edges (Apache AGE), with one typed query model, a cost-based planner
+and a read-only executor.
 
-The longer-term vision is to extend YoDb beyond relational databases to heterogeneous data sources, including other database systems and visual information such as images and videos.
+The longer-term vision is to extend YoDb beyond PostgreSQL to heterogeneous data sources, including other database systems and visual information such as images and videos.
 
 **Current capabilities**
-- PostgreSQL-backed querying
-- Cross-database query execution
+- PostgreSQL-backed querying across several databases (one dataset, several tables)
+- Joins over declared relationships: field equality, or edges of an Apache AGE graph
+- Similarity search over pgvector embeddings, and a model-judged semantic filter
 - MCP integration for AI agents
 
 **Planned directions**
@@ -18,7 +21,7 @@ The longer-term vision is to extend YoDb beyond relational databases to heteroge
 - Extensible source-specific query and retrieval operators
 - Visual and multimodal retrieval
 
-*YoDb is in active development. PostgreSQL is currently the supported backend; additional sources and visual retrieval are not yet implemented.*
+*YoDb is in active development. PostgreSQL (with the pgvector and Apache AGE extensions) is currently the supported backend; additional sources and visual retrieval are not yet implemented.*
 
 ---
 
@@ -187,26 +190,48 @@ returns rows. With YoDb:
   that would read too much is stopped and refused.
 - **Nothing leaks.** Errors never contain passwords, SQL or data values.
 
-## Filtering by meaning
+## Searching by similarity, filtering by meaning
 
-A filter can also be a sentence. This keeps the tickets whose text is about a
-late delivery, whatever words the customer used:
+With embeddings in a pgvector column, a condition can rank records by how close
+their text is to a text you give. This keeps the 20 open tickets nearest to a
+late-delivery complaint, nearest first, with each row's distance in the result:
+
+```json
+{"all": [
+  {"field": "status", "op": "eq", "value": "open"},
+  {"similar": {"field": "body", "text": "the delivery arrived late and damaged", "top": 20}}
+]}
+```
+
+YoDb ships an embedding provider over an open local model
+(`yodb.embeddings.FastEmbedProvider`, `pip install ".[semantic]"`). See
+[docs/query/similarity-search.mdx](docs/query/similarity-search.mdx).
+
+A filter can also be a sentence that a model you supply judges for every row:
 
 ```json
 {"semantic": {"field": "body", "proposition": "the customer is asking about a late delivery"}}
 ```
 
-You supply the model that judges each row. YoDb can first narrow the candidates
-with a vector search, and it enforces a cost and time budget. See
-[docs/query/semantic-filter.mdx](docs/query/semantic-filter.mdx).
+YoDb can first narrow the candidates with a vector search, and it enforces a cost
+and time budget. See [docs/query/semantic-filter.mdx](docs/query/semantic-filter.mdx).
+
+## Following graph edges
+
+A relationship that has no matching column, such as who referred whom, can be
+stored as edges in an Apache AGE graph inside PostgreSQL. Declare the graph on
+the source and the edge type on the relationship; the same `traverse` step then
+follows the edges, and the rows still come from their tables. See
+[docs/catalog/graphs.mdx](docs/catalog/graphs.mdx).
 
 ## What it cannot do yet
 
 YoDb is at version 0.1. It is tested, but deliberately small:
 
-- **PostgreSQL only.** No other database, and no SaaS APIs.
+- **PostgreSQL only.** No other database, and no SaaS APIs. Graph edges need the
+  Apache AGE extension, embeddings the pgvector extension.
 - **No counting or totals.** There is no `count`, `sum` or `group by`.
-- **One relationship per query.** You can follow one `traverse` step.
+- **One relationship per query.** You can follow one `traverse` step (one hop, also over graph edges).
 - **One page of results.** Up to 500 rows per query, with no "next page".
 - **Read-only.** There is no way to write data.
 - **Bounded size.** Rows from different databases are joined in memory. A query
@@ -234,7 +259,7 @@ parts are stable (the query format, the catalog files, the error codes, the
 - [Quickstart](docs/getting-started/quickstart.mdx): the sample shop, step by step
 - [Concepts](docs/getting-started/overview.mdx): the handful of terms used everywhere
 - [Writing a catalog](docs/catalog/overview.mdx)
-- [The query format](docs/query/query-model.mdx) and [joins](docs/query/joins.mdx)
+- [The query format](docs/query/query-model.mdx), [joins](docs/query/joins.mdx), [graphs](docs/catalog/graphs.mdx) and [similarity search](docs/query/similarity-search.mdx)
 - [The command line](docs/reference/cli.mdx) and the [Python API](docs/reference/python.mdx)
 - [Errors](docs/reference/errors.mdx) and [limits](docs/reference/limits.mdx)
 - [Running YoDb](docs/operations/operating.mdx): database roles, secrets and time limits
@@ -249,4 +274,6 @@ PYTHONPATH=src python3 -m unittest discover -s tests     # unit tests, no databa
 ```
 
 The end-to-end suites run against a throwaway PostgreSQL in Docker and compare
-every answer with plain SQL. See [tests/e2e/README.md](tests/e2e/README.md).
+every answer with plain SQL. See [tests/e2e/README.md](tests/e2e/README.md), and
+[tests/e2e/age/README.md](tests/e2e/age/README.md) for the graph and similarity suite
+(PostgreSQL + Apache AGE + pgvector).

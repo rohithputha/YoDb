@@ -84,6 +84,7 @@ Keep the file out of version control and readable only by you.
 | --- | --- | --- |
 | `--connections FILE` | validate, explain, query, mcp | connection strings by reference |
 | `--no-statistics` | validate, explain, query, mcp | plan with the fixed rules only |
+| `--embedding-model NAME` | validate, explain, query, mcp | a local fastembed model (e.g. `BAAI/bge-small-en-v1.5`) that enables [similarity searches](/query/similarity-search); needs the `semantic` extra |
 | `--statement-timeout SECONDS` | validate, explain, query, mcp | database statement limit when `--timeout` is not given (default 60) |
 | `--timeout SECONDS` | query, mcp | time limit for the whole query (`mcp`: for each query, default 60) |
 | `--format table\|json\|jsonl` | query | output format |
@@ -108,4 +109,6 @@ the traversed fields prefixed with the `as` name (`ticket.subject`).
 [MCP server](/reference/mcp).
 
 The command does not configure the [semantic filter](/query/semantic-filter),
-which needs providers: use the Python API for that.
+which needs a verifier: use the Python API for that. `--embedding-model` is enough
+for a [similarity search](/query/similarity-search); `--format json` then adds a
+`"similar"` entry with each row's distance and rank.

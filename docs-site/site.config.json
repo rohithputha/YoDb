@@ -43,6 +43,10 @@
           "label": "rules.yaml"
         },
         {
+          "path": "catalog/graphs",
+          "label": "Graphs (Apache AGE)"
+        },
+        {
           "path": "catalog/yaml-syntax",
           "label": "YAML syntax"
         }
@@ -62,6 +66,10 @@
         {
           "path": "query/semantic-filter",
           "label": "Semantic filter"
+        },
+        {
+          "path": "query/similarity-search",
+          "label": "Similarity search"
         }
       ]
     },

@@ -72,6 +72,25 @@ class VectorSearchCapability:
 
 
 @dataclass(frozen=True)
+class GraphCapability:
+    """The source can follow the edges of one type between two vertex labels for a set of IDs.
+
+    ``maximum_keys`` is the most IDs one edge read may start from.  The source
+    returns (start ID, end ID) pairs; YoDb matches them with the rows of the two
+    datasets, so the graph only has to hold identities and edges.
+    """
+
+    engine: str                 # e.g. "age" (Apache AGE in PostgreSQL)
+    maximum_keys: int
+
+    def __post_init__(self) -> None:
+        if not self.engine.strip():
+            raise ValueError("a graph capability needs an engine name")
+        if self.maximum_keys < 1:
+            raise ValueError("maximum_keys must be positive")
+
+
+@dataclass(frozen=True)
 class SourceCapabilities:
     source_kind: SourceKind
     # Filtering the source can enforce exactly.
@@ -87,6 +106,7 @@ class SourceCapabilities:
     maximum_rows: int | None = None
     key_lookup: KeyLookupCapability | None = None
     vector_search: VectorSearchCapability | None = None
+    graph: GraphCapability | None = None
 
     def __post_init__(self) -> None:
         if self.maximum_rows is not None and self.maximum_rows < 1:
@@ -214,6 +234,18 @@ def _vector_search_view(caps: SourceCapabilities) -> OperatorSupport:
     if v.maximum_shortlist:
         detail += f"; shortlist up to {v.maximum_shortlist}"
     return _source(OperatorKind.VECTOR_SEARCH, ("ranked_read",), detail)
+
+
+@support_view(OperatorKind.TRAVERSE)
+def _traverse_view(caps: SourceCapabilities) -> OperatorSupport:
+    if caps.graph is None:
+        return _unavailable(OperatorKind.TRAVERSE, "no graph engine: relationships stored as edges cannot be followed")
+    return _coordinator(
+        OperatorKind.TRAVERSE,
+        ("edge_join",),
+        f"the source ({caps.graph.engine}) returns the edges of one type for up to {caps.graph.maximum_keys} IDs; "
+        "YoDb joins the two datasets' rows over them",
+    )
 
 
 @support_view(OperatorKind.COMBINE)

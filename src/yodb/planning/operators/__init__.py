@@ -8,7 +8,7 @@ implementing :class:`ExtensionOperator`.  See ``plans/v0.1-operators.md``.
 from .base import Claim, ExtensionOperator, ExtensionPlan, PlanningExtension, PlanningServices, Strategy, effective_limit
 from .combine import CombineDecision, CombineOperator
 from .filter import FilterOperator
-from .join import HashJoin, JoinPolicy, OrderSpec
+from .join import EdgeJoin, GraphEdgeScan, HashJoin, JoinPolicy, OrderSpec
 from .order_page import OrderPageOperator
 from .project import ProjectOperator
 from .scan import ScanOperator, ScanPlan
@@ -20,6 +20,8 @@ __all__ = [
     "ExtensionOperator",
     "ExtensionPlan",
     "FilterOperator",
+    "EdgeJoin",
+    "GraphEdgeScan",
     "HashJoin",
     "JoinPolicy",
     "OrderSpec",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import math
+import re
 from typing import Any
 
 from ..catalog import SourceKind
@@ -58,6 +59,8 @@ class PostgresQueryExecutionAdapter:
                 query.connection_ref,
                 timeout_seconds=timeout_seconds,
             ) as connection:
+                if query.requires_extension is not None:
+                    _load_extension(connection, query.requires_extension)
                 with connection.cursor() as cursor:
                     if limit is not None:
                         # The database stops the statement itself; the pool timeout only bounds waiting.
@@ -78,10 +81,18 @@ class PostgresQueryExecutionAdapter:
                         source_name=query.source_name,
                     )
                 ) from error
+            message = "The PostgreSQL source could not execute the compiled query."
+            if query.requires_extension is not None and _extension_missing(error, query.requires_extension):
+                message = (
+                    f"The PostgreSQL source could not run the statement because the '{query.requires_extension}' "
+                    "extension is not available in the session: install it (CREATE EXTENSION) and preload it for "
+                    f"YoDb's role (ALTER ROLE ... SET session_preload_libraries = '{query.requires_extension}', or "
+                    "shared_preload_libraries on the server)."
+                )
             raise QueryExecutionError(
                 ErrorDetail(
                     code=ErrorCode.QUERY_EXECUTION_FAILED,
-                    message="The PostgreSQL source could not execute the compiled query.",
+                    message=message,
                     retryable=False,
                     source_name=query.source_name,
                 )
@@ -89,6 +100,34 @@ class PostgresQueryExecutionAdapter:
 
         fields = tuple(column.logical_field for column in query.output_columns)
         return tuple(_logical_row(fields, row, query.source_name) for row in rows)
+
+
+_LOADABLE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _load_extension(connection: Any, name: str) -> None:
+    """``LOAD`` a server library into the session, if the role may.
+
+    Apache AGE's Cypher call only works once its library is loaded.  A superuser
+    can ``LOAD`` it; an ordinary read-only role cannot, and relies on the server
+    or the role preloading it (``session_preload_libraries``).  A refused ``LOAD``
+    is therefore not an error here: the transaction it aborted is rolled back and
+    the statement runs; if the library is really absent the statement fails with
+    a message that says so.
+    """
+
+    if not _LOADABLE.fullmatch(name):
+        raise ValueError(f"not a loadable extension name: {name!r}")
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"LOAD '{name}'")
+    except Exception:
+        connection.rollback()
+
+
+def _extension_missing(error: Exception, name: str) -> bool:
+    text = str(error).lower()
+    return name in text or "cypher" in text
 
 
 def _logical_row(

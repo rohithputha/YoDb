@@ -12,6 +12,7 @@ from ..query.models import ComparisonOperator
 from .adapter import CapabilityPlanningAdapter
 from .capabilities import (
     BooleanOperator,
+    GraphCapability,
     KeyLookupCapability,
     SourceCapabilities,
     TextOrdering,
@@ -60,6 +61,8 @@ POSTGRES_CAPABILITIES = SourceCapabilities(
         combines_with_filters=True,  # WHERE ... ORDER BY embedding <=> $v LIMIT K
         maximum_shortlist=None,
     ),
+    # Requires the Apache AGE extension on the source and a ``graph`` declaration in the catalog.
+    graph=GraphCapability(engine="age", maximum_keys=1_000),
 )
 
 

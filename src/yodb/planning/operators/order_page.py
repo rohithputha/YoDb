@@ -23,8 +23,8 @@ class OrderPageOperator:
         source's collation.
         """
 
-        if page_pushed:
-            return node
+        if page_pushed or getattr(node, "orders_and_pages", False):
+            return node                 # a ranking operator already ordered the page (by relevance) and cut it
         return CoordinatorSortPage(
             input=node,
             order_by=query.order_by,

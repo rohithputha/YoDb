@@ -8,8 +8,17 @@ The executor itself never changes.
 
 from __future__ import annotations
 
-from ...planning import CoordinatorFilter, CoordinatorSortPage, HashJoin, RecordAssembly, RemoteScan, ResultProject
-from . import combine, filter as filter_operator, join, order_page, project, scan
+from ...planning import (
+    CoordinatorFilter,
+    CoordinatorSortPage,
+    EdgeJoin,
+    GraphEdgeScan,
+    HashJoin,
+    RecordAssembly,
+    RemoteScan,
+    ResultProject,
+)
+from . import combine, edges, filter as filter_operator, join, order_page, project, scan
 from .base import (
     ExecutionContext,
     ExecutionExtension,
@@ -27,6 +36,8 @@ def default_handlers() -> dict[type, Handler]:
         RecordAssembly: combine.execute,
         CoordinatorFilter: filter_operator.execute,
         HashJoin: join.execute,
+        EdgeJoin: join.execute_edges,
+        GraphEdgeScan: edges.execute,
         CoordinatorSortPage: order_page.execute,
         ResultProject: project.execute,
     }

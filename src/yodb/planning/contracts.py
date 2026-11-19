@@ -165,6 +165,8 @@ class VectorSearch:
     # Row guard for the plain scan the executor falls back to when the ranked
     # search would be unsafe (see ``RecordAssembly.schedule``).
     fallback_maximum_rows: int | None = None
+    # Also return each row's distance to the query vector, as the helper field ``_distance``.
+    return_distance: bool = False
 
 
 @dataclass(frozen=True)
@@ -197,7 +199,10 @@ class RemoteScan(PhysicalNode):
             "order": [(term.field.name, term.direction.value) for term in self.order_by],
             "limit": self.limit,
             "maximum_rows": self.maximum_rows,
-            "vector": None if self.vector_search is None else [self.vector_search.metric.value, self.vector_search.shortlist_size],
+            "vector": None
+            if self.vector_search is None
+            else [self.vector_search.metric.value, self.vector_search.shortlist_size]
+            + (["distance"] if self.vector_search.return_distance else []),
         }
 
     def describe(self) -> "PlanExplanationNode":

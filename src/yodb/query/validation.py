@@ -188,6 +188,7 @@ def bind_query(
         query_fingerprint=query_fingerprint(payload),
         catalog_fingerprint=catalog_fingerprint(catalog),
         rules=expansion.uses,
+        explicit_order=bool(request.order_by),
     )
 
 

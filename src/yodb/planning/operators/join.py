@@ -14,6 +14,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import ClassVar, Literal
 
+from ...catalog import SourceKind
 from ...operators import OperatorKind
 from ..capabilities import OperatorSupport, SourceCapabilities, SupportLevel, support_view
 from ..contracts import PhysicalNode, PlanExplanationNode
@@ -100,6 +101,126 @@ class HashJoin(PhysicalNode):
                 f"on {self.key_description}",
                 f"driving side ({self.driver_side}) is planned first; the probing side ({probe_side}) is shown for one "
                 f"batch and runs once per batch of up to {self.policy.batch_size} keys",
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class GraphEdgeScan(PhysicalNode):
+    """Read the edges of one type between two vertex labels of a graph, starting from a batch of IDs.
+
+    The graph is asked for the pairs (start ID, end ID) of the ``anchored`` end's
+    vertices whose ID is in ``ids``.  It is a leaf, like a :class:`RemoteScan`:
+    the compiler of the source turns it into a native statement (Cypher inside
+    SQL for Apache AGE) and the executor runs it.  ``ids`` is filled per batch by
+    the join handler, never by the planner.
+    """
+
+    operator: ClassVar[OperatorKind] = OperatorKind.TRAVERSE
+
+    source_name: str
+    source_kind: SourceKind
+    connection_ref: str
+    graph: str
+    edge_type: str
+    from_label: str
+    from_id_property: str
+    to_label: str
+    to_id_property: str
+    anchored: Literal["from", "to"]            # the end whose IDs are given
+    ids: tuple[str, ...] = ()
+    maximum_rows: int | None = None            # the executor refuses more edges than this (a guard)
+
+    def shape(self) -> dict[str, object]:
+        return {
+            "kind": "graph_edge_scan",
+            "source": self.source_name,
+            "graph": self.graph,
+            "edge_type": self.edge_type,
+            "from": [self.from_label, self.from_id_property],
+            "to": [self.to_label, self.to_id_property],
+            "anchored": self.anchored,
+        }
+
+    def describe(self) -> PlanExplanationNode:
+        start, end = (self.from_label, self.to_label) if self.anchored == "from" else (self.to_label, self.from_label)
+        arrow = "-[edge]->" if self.anchored == "from" else "<-[edge]-"
+        return PlanExplanationNode(
+            kind="graph_edge_scan",
+            location=self.source_name,
+            fields=("start_id", "end_id"),
+            limit=self.maximum_rows,
+            detail=(
+                f"graph={self.graph} edge_type={self.edge_type}",
+                f"({start}) {arrow} ({end}), for one batch of {start} IDs",
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class EdgeJoin(PhysicalNode):
+    """Run ``driver``, follow the graph edges from its IDs, read the other side for the IDs reached, match in memory.
+
+    The shape of a :class:`HashJoin` with the edges between: the driving side's IDs are sent to the graph
+    in batches, the (start, end) pairs it returns say which rows match, and the other side is read only
+    for the IDs the edges reach.  Both sides join on their ``id``.
+    """
+
+    operator: ClassVar[OperatorKind] = OperatorKind.TRAVERSE
+
+    driver: PhysicalNode
+    probe: PhysicalNode                        # the other side, planned for a sample batch (explain, fingerprint)
+    edges: GraphEdgeScan                       # anchored at the driving side, with no IDs yet
+    driver_side: Literal["left", "right"]
+    relationship: str
+    alias: str
+    optional: bool
+    left_columns: tuple[str, ...]
+    right_columns: tuple[str, ...]
+    order: tuple[OrderSpec, ...]
+    first: int
+    policy: JoinPolicy
+    probe_for: Callable[[Sequence[object], int], PhysicalNode] = field(compare=False, repr=False, default=None)  # type: ignore[assignment]
+
+    @property
+    def columns(self) -> tuple[str, ...]:
+        return (*self.left_columns, *(f"{self.alias}.{name}" for name in self.right_columns))
+
+    def inputs(self) -> tuple[PhysicalNode, ...]:
+        return (self.driver, self.edges, self.probe)
+
+    def with_inputs(self, inputs: tuple[PhysicalNode, ...]) -> PhysicalNode:
+        driver, edges, probe = inputs
+        return replace(self, driver=driver, edges=edges, probe=probe)
+
+    def shape(self) -> dict[str, object]:
+        return {
+            "kind": "edge_join",
+            "relationship": self.relationship,
+            "driver": self.driver_side,
+            "optional": self.optional,
+            "order": [(o.column, o.descending) for o in self.order],
+            "first": self.first,
+            "batch_size": self.policy.batch_size,
+            "driver_plan": self.driver.shape(),
+            "edges": self.edges.shape(),
+            "probe_plan": self.probe.shape(),
+        }
+
+    def describe(self) -> PlanExplanationNode:
+        probe_side = "right" if self.driver_side == "left" else "left"
+        return PlanExplanationNode(
+            kind="edge_join",
+            location="coordinator",
+            fields=self.columns,
+            ordering=tuple(f"{o.column} {'desc' if o.descending else 'asc'}" for o in self.order),
+            limit=self.first,
+            key_transfer_max_keys=self.policy.batch_size,
+            detail=(
+                f"relationship={self.relationship} as={self.alias} kind={'left' if self.optional else 'inner'}",
+                f"over graph edges {self.edges.edge_type} in graph {self.edges.graph} (source {self.edges.source_name})",
+                f"driving side ({self.driver_side}) runs first; its IDs go to the graph in batches of up to "
+                f"{self.policy.batch_size}; the other side ({probe_side}) is read for the IDs the edges reach",
             ),
         )
 

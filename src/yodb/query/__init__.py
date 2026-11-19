@@ -38,6 +38,7 @@ from .resolution import (
     resolve_query_sources,
 )
 from .semantic import BoundSemanticPredicate, SemanticPredicate, semantic_predicates, without_semantic_terms
+from .similar import BoundSimilarPredicate, SimilarPredicate, similar_predicates, without_similar_terms
 from .validation import QueryValidationPolicy, bind_query, validate_query
 
 __all__ = [
@@ -58,6 +59,7 @@ __all__ = [
     "BoundPredicate",
     "BoundQuery",
     "BoundSemanticPredicate",
+    "BoundSimilarPredicate",
     "ComparisonOperator",
     "DatasetReference",
     "FieldUse",
@@ -73,6 +75,7 @@ __all__ = [
     "RuleUse",
     "QueryValidationPolicy",
     "SemanticPredicate",
+    "SimilarPredicate",
     "SortDirection",
     "ResolvedField",
     "SingleSourceQueryBinding",
@@ -82,6 +85,8 @@ __all__ = [
     "parse_query",
     "resolve_query_sources",
     "semantic_predicates",
+    "similar_predicates",
     "validate_query",
     "without_semantic_terms",
+    "without_similar_terms",
 ]

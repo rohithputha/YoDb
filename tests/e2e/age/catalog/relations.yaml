@@ -1,0 +1,22 @@
+api_version: yodb/v0.2
+relationships:
+  customer_has_ticket:
+    from: customer
+    to: ticket
+    description: A ticket belongs to a customer (graph edges only).
+    cardinality: one_to_many
+    direction: bi
+    implementations:
+      - from: {source: shop, field: id}
+        to: {source: shop, field: id}
+        edge_type: HAS_TICKET
+  referred_by:
+    from: customer
+    to: customer
+    description: A customer was referred by another (graph edges only).
+    cardinality: many_to_one
+    direction: uni
+    implementations:
+      - from: {source: shop, field: id}
+        to: {source: shop, field: id}
+        edge_type: REFERRED_BY

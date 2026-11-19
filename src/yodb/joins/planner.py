@@ -11,10 +11,12 @@ import re
 from typing import Any
 from uuid import UUID
 
-from ..catalog import Catalog, LogicalType, Visibility
+from ..catalog import Catalog, LogicalType, RelationshipImplementation, Visibility, graph_implementation
 from ..errors import ErrorCode, ErrorDetail, QueryError
 from ..planning import (
+    EdgeJoin,
     FederatedPhysicalPlanner,
+    GraphEdgeScan,
     HashJoin,
     JoinPolicy,
     OrderSpec,
@@ -80,8 +82,14 @@ class JoinPlanner:
         root_raw, step = split_traverse(raw)
         catalog = active.catalog
         root_dataset = _root_dataset(root_raw)
-        relationship_name, right_dataset, left_key, right_key = _resolve_relationship(catalog, root_dataset, step)
+        link = _resolve_relationship(catalog, root_dataset, step)
+        relationship_name, right_dataset, left_key, right_key = link.name, link.right_dataset, link.left_field, link.right_field
         first, maximum_results = self._page(root_raw)
+        if _has_term(step.where, "similar"):
+            _fail(ErrorCode.QUERY_FEATURE_NOT_SUPPORTED,
+                  "A similarity search cannot be placed in a traverse step; put it in the top-level 'where' of the 'from' dataset.",
+                  "traverse[0].where")
+        root_raw = _with_default_top(root_raw, first if maximum_results is None else min(first, maximum_results))
         left_order, right_order = _split_order(root_raw.get("order_by"), step.alias)
         _check_order_fields(catalog, root_dataset, [n for n, _ in left_order], "")
         _check_order_fields(catalog, right_dataset, [n for n, _ in right_order], f"{step.alias}.")
@@ -122,12 +130,10 @@ class JoinPlanner:
         probe_template = probe_for(sample, self._policy.maximum_probe_rows + 1)
         driver_plan, driver_key = (left_driver, left_key) if driver == "left" else (right_driver, right_key)
 
-        node = HashJoin(
+        common = dict(
             driver=driver_plan.plan,
             probe=probe_template,
             driver_side=driver,
-            driver_key=driver_key,
-            probe_key=probe_key,
             relationship=relationship_name,
             alias=step.alias,
             optional=step.optional,
@@ -139,9 +145,23 @@ class JoinPlanner:
             ),
             first=min(first, maximum_results) if maximum_results else first,
             policy=self._policy,
-            key_description=f"{root_dataset}.{left_key} = {right_dataset}.{right_key}",
             probe_for=probe_for,
         )
+        if link.edge is None:
+            node: PhysicalNode = HashJoin(
+                driver_key=driver_key,
+                probe_key=probe_key,
+                key_description=f"{root_dataset}.{left_key} = {right_dataset}.{right_key}",
+                **common,
+            )
+            plan_kind = "hash_join"
+        else:
+            # The driving side's IDs belong to the relationship's "from" end when the root is that end and the
+            # root drives, or when the traversed dataset is that end and it drives.
+            root_is_from = step.direction == "forward"
+            anchored = "from" if (driver == "left") == root_is_from else "to"
+            node = EdgeJoin(edges=replace(link.edge, anchored=anchored), **common)
+            plan_kind = "edge_join"
         fingerprint = plan_fingerprint(node)
         return PlannedQuery(
             query=left_driver.query,                 # the root side's bound query; the join adds its own spec
@@ -152,10 +172,11 @@ class JoinPlanner:
                 "join": relationship_name, "alias": step.alias, "optional": step.optional, "direction": step.direction,
                 "left": left_driver.query_fingerprint, "right": right_driver.query_fingerprint,
                 "order": [(o.column, o.descending) for o in node.order], "first": node.first,
+                **({"edge": link.edge.shape()} if link.edge is not None else {}),
             }),
             plan_fingerprint=fingerprint,
             explain=PlanExplanation(
-                plan_kind="hash_join",
+                plan_kind=plan_kind,
                 catalog_fingerprint=left_driver.catalog_fingerprint,
                 plan_fingerprint=fingerprint,
                 nodes=explain_plan(node),
@@ -191,6 +212,8 @@ class JoinPlanner:
 
         if step.optional:
             return "left", ("strategy=rules", "driver=left", "reason=a left join keeps every root row, so the root side drives")
+        if _has_term(left_where, "similar"):
+            return "left", ("strategy=rules", "driver=left", "reason=a similarity search ranks the root rows, so the root side drives")
         statistics = getattr(self._planner, "statistics", None)
         left_rows, right_rows = _estimate(left, statistics), _estimate(right, statistics)
         if left_rows is not None and right_rows is not None:
@@ -250,8 +273,23 @@ def _root_dataset(root_raw: Mapping[str, Any]) -> str:
     return name
 
 
-def _resolve_relationship(catalog: Catalog, root: str, step: Traversal) -> tuple[str, str, str, str]:
-    """(relationship name, traversed dataset, root join field, traversed join field)."""
+@dataclass(frozen=True)
+class _Link:
+    """How a traverse step joins the root dataset to the traversed one."""
+
+    name: str                      # the relationship
+    right_dataset: str             # the traversed dataset
+    left_field: str                # the root's join field ("id" for a graph edge)
+    right_field: str               # the traversed dataset's join field ("id" for a graph edge)
+    edge: GraphEdgeScan | None     # the graph edges to follow, when the relationship is stored as edges
+
+
+def _resolve_relationship(catalog: Catalog, root: str, step: Traversal) -> _Link:
+    """The relationship a step names, checked against the root dataset, and the implementation it will use.
+
+    A field-equality implementation is preferred (two reads and an in-memory match); a relationship
+    implemented only as graph edges is followed through the graph (an AGE graph in a PostgreSQL source).
+    """
 
     found = next(
         ((name, rel) for name, rel in catalog.relationships.items() if step.relationship == name or step.relationship in rel.aliases),
@@ -271,17 +309,73 @@ def _resolve_relationship(catalog: Catalog, root: str, step: Traversal) -> tuple
             _fail(ErrorCode.RELATIONSHIP_NOT_APPLICABLE, f"Relationship '{name}' is not declared bidirectional, so it cannot be traversed in reverse.", "traverse[0].direction")
         if rel.to_dataset != root:
             _fail(ErrorCode.RELATIONSHIP_NOT_APPLICABLE, f"Relationship '{name}' does not end at '{root}'.", "traverse[0].relationship")
-    implementation = next((i for i in rel.implementations if i.edge_type is None), None)
-    if implementation is None:
-        _fail(ErrorCode.QUERY_FEATURE_NOT_SUPPORTED, f"Relationship '{name}' is only implemented as a graph edge, which V0.1 cannot traverse.", "traverse[0].relationship")
     forward = step.direction == "forward"
     right_dataset = rel.to_dataset if forward else rel.from_dataset
+    implementation = next((i for i in rel.implementations if i.edge_type is None), None)
+    if implementation is None:
+        edge = next((i for i in rel.implementations if i.edge_type is not None and graph_implementation(catalog, i)), None)
+        if edge is None:
+            _fail(ErrorCode.QUERY_FEATURE_NOT_SUPPORTED, f"Relationship '{name}' is only implemented as graph edges in a source that has no graph engine; it cannot be traversed.", "traverse[0].relationship")
+        return _Link(name, right_dataset, "id", "id", edge_scan(catalog, rel.from_dataset, rel.to_dataset, edge))
     left_field = implementation.from_endpoint.field if forward else implementation.to_endpoint.field
     right_field = implementation.to_endpoint.field if forward else implementation.from_endpoint.field
     for dataset, field in ((root, left_field), (right_dataset, right_field)):
         if catalog.datasets[dataset].fields[field].visibility is not Visibility.PUBLIC:
             _fail(ErrorCode.FIELD_NOT_ACCESSIBLE, f"Relationship '{name}' joins on '{dataset}.{field}', which is internal; V0.1 can only join on public fields.", "traverse[0].relationship")
-    return name, right_dataset, left_field, right_field
+    return _Link(name, right_dataset, left_field, right_field, None)
+
+
+def edge_scan(catalog: Catalog, from_dataset: str, to_dataset: str, implementation: RelationshipImplementation) -> GraphEdgeScan:
+    """The graph edge read of an ``edge_type`` implementation (anchored at the "from" end until a side drives)."""
+
+    source_name = implementation.from_endpoint.source
+    source = catalog.sources[source_name]
+    start, end = source.graph.vertices[from_dataset], source.graph.vertices[to_dataset]
+    return GraphEdgeScan(
+        source_name=source_name,
+        source_kind=source.kind,
+        connection_ref=source.connection_ref,
+        graph=source.graph.name,
+        edge_type=implementation.edge_type,
+        from_label=start.label,
+        from_id_property=start.id_property,
+        to_label=end.label,
+        to_id_property=end.id_property,
+        anchored="from",
+    )
+
+
+def _has_term(where: Any, key: str) -> bool:
+    """Whether a raw filter holds an extension term of ``key`` (e.g. a similarity search), at any depth."""
+
+    if isinstance(where, Mapping):
+        return key in where or any(_has_term(v, key) for v in where.values())
+    if isinstance(where, list):
+        return any(_has_term(v, key) for v in where)
+    return False
+
+
+def _with_default_top(root_raw: Mapping[str, Any], first: int) -> dict[str, Any]:
+    """A similarity search in the root filter with no ``top`` ranks as many rows as the join's page asks for.
+
+    The root side is planned as an internal query that may read far more rows than a page, so the
+    default (the page size) would be wrong there; the join's own page is the right default.
+    """
+
+    where = root_raw.get("where")
+    if not _has_term(where, "similar"):
+        return dict(root_raw)
+
+    def fill(node: Any) -> Any:
+        if isinstance(node, Mapping):
+            if "similar" in node and isinstance(node["similar"], Mapping) and "top" not in node["similar"]:
+                return {**node, "similar": {**node["similar"], "top": first}}
+            return {key: fill(value) for key, value in node.items()}
+        if isinstance(node, list):
+            return [fill(item) for item in node]
+        return node
+
+    return {**root_raw, "where": fill(where)}
 
 
 def _split_order(order_by: Any, alias: str) -> tuple[list[tuple[str, bool]], list[tuple[str, bool]]]:

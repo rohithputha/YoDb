@@ -55,7 +55,8 @@ from .planning import (
     StatisticsService,
 )
 from .runtime import CatalogRefreshResult, InMemoryCatalogRuntime
-from .semantic import SemanticExtension, SemanticRuntime
+from .semantic import EmbeddingProvider, SemanticExtension, SemanticRuntime
+from .similar import SimilarExtension
 
 Connections = Mapping[str, "str | PostgresConnectionSettings"] | PostgresConnectionReferenceResolver | None
 
@@ -64,12 +65,19 @@ class YoDb:
     """An open, validated catalog and the engine that answers queries against it."""
 
     def __init__(
-        self, runtime: InMemoryCatalogRuntime, engine: QueryExecutionEngine, *, close=None, semantic: bool = False
+        self,
+        runtime: InMemoryCatalogRuntime,
+        engine: QueryExecutionEngine,
+        *,
+        close=None,
+        semantic: bool = False,
+        embedding_model: str | None = None,
     ) -> None:
         self._runtime = runtime
         self._engine = engine
         self._close = close
         self._semantic = semantic
+        self._embedding_model = embedding_model
 
     @classmethod
     def connect(
@@ -78,6 +86,7 @@ class YoDb:
         connections: Connections = None,
         *,
         semantic: SemanticExtension | SemanticRuntime | None = None,
+        embedder: EmbeddingProvider | SimilarExtension | None = None,
         statistics: bool = True,
         pool_size: int = 10,
         acquire_timeout_seconds: float = 30.0,
@@ -92,6 +101,10 @@ class YoDb:
         ``connections`` maps each catalog ``connection_ref`` to a libpq conninfo string, or is a
         resolver object; left out, each reference is read from ``YODB_CONN_<REF>``.  Raises a
         :class:`CatalogRuntimeError` listing what is wrong when the catalog does not match the sources.
+
+        ``semantic`` enables semantic conditions (a verifier, with an optional embedder for the
+        shortlist).  ``embedder`` enables similarity searches (``{"similar": ...}``); left out, the
+        semantic runtime's embedder serves them when it has one.
         """
 
         adapter = PostgresConnectionAdapter(
@@ -119,7 +132,7 @@ class YoDb:
                 if statistics
                 else None
             )
-            extensions = _extensions(semantic)
+            extensions = _extensions(semantic, embedder)
             planner = FederatedPhysicalPlanner(
                 SourcePlanningRegistry([PostgresPlanningAdapter()]),
                 policy=planner_policy,
@@ -141,7 +154,14 @@ class YoDb:
         except BaseException:
             adapter.close()
             raise
-        return cls(runtime, engine, close=adapter.close, semantic=bool(extensions))
+        similar = next((e for e in extensions if isinstance(e, SimilarExtension)), None)
+        return cls(
+            runtime,
+            engine,
+            close=adapter.close,
+            semantic=any(isinstance(e, SemanticExtension) for e in extensions),
+            embedding_model=None if similar is None or similar.embedder is None else similar.embedder.info.model,
+        )
 
     # --- asking -------------------------------------------------------------------------
 
@@ -168,6 +188,31 @@ class YoDb:
         return self._semantic
 
     @property
+    def similar_enabled(self) -> bool:
+        """Whether an embedding provider was configured, so a query may hold a similarity search."""
+
+        return self._embedding_model is not None
+
+    @property
+    def embedding_model(self) -> str | None:
+        """The model of the configured embedding provider (a field is searchable when its embeddings use it)."""
+
+        return self._embedding_model
+
+    def similar_fields(self) -> dict[str, tuple[str, ...]]:
+        """Per dataset, the fields a similarity search can rank: embedded with the configured model."""
+
+        if self._embedding_model is None:
+            return {}
+        found: dict[str, list[str]] = {}
+        for source in self.catalog.sources.values():
+            for dataset_name, representation in source.datasets.items():
+                for field_name, binding in representation.embeddings.items():
+                    if binding.model == self._embedding_model:
+                        found.setdefault(dataset_name, []).append(field_name)
+        return {dataset: tuple(sorted(fields)) for dataset, fields in found.items()}
+
+    @property
     def limits(self) -> dict[str, int]:
         """The bounds in force: page sizes, list sizes and the row guards."""
 
@@ -177,11 +222,16 @@ class YoDb:
         """What can be queried: each dataset's description and fields with their types."""
 
         catalog = self.catalog
+        similar = self.similar_fields()
         return {
             name: {
                 "description": dataset.description,
                 "fields": {
-                    field: {"type": spec.type.value, **({"semantic": True} if spec.semantic_eligible else {})}
+                    field: {
+                        "type": spec.type.value,
+                        **({"semantic": True} if spec.semantic_eligible else {}),
+                        **({"similar": True} if field in similar.get(name, ()) else {}),
+                    }
                     for field, spec in dataset.fields.items()
                 },
                 **self._rules_of(name),
@@ -238,12 +288,18 @@ def _resolver(connections: Connections) -> PostgresConnectionReferenceResolver:
     return connections
 
 
-def _extensions(semantic: SemanticExtension | SemanticRuntime | None) -> tuple[SemanticExtension, ...]:
-    if semantic is None:
-        return ()
-    if isinstance(semantic, SemanticRuntime):
-        return (SemanticExtension(semantic),)
-    return (semantic,)
+def _extensions(
+    semantic: SemanticExtension | SemanticRuntime | None,
+    embedder: EmbeddingProvider | SimilarExtension | None,
+) -> tuple[SemanticExtension | SimilarExtension, ...]:
+    extensions: list[SemanticExtension | SimilarExtension] = []
+    if semantic is not None:
+        extensions.append(SemanticExtension(semantic) if isinstance(semantic, SemanticRuntime) else semantic)
+    if embedder is None and extensions and extensions[0].runtime is not None:
+        embedder = extensions[0].runtime.embedder            # one embedder serves both
+    if embedder is not None:
+        extensions.append(embedder if isinstance(embedder, SimilarExtension) else SimilarExtension(embedder))
+    return tuple(extensions)
 
 
 def _as_query(query: Mapping[str, Any] | str) -> Mapping[str, Any]:

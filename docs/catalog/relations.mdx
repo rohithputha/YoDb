@@ -75,9 +75,20 @@ A query can follow a relationship when:
 - the two fields have the same type (the catalog refuses to load otherwise);
 - both fields are public, because YoDb has to read the key.
 
-## Graph edges (not available)
+## Graph edges (Apache AGE)
 
-The loader accepts an `edge_type` key on an implementation, meant for a
-relationship stored as an edge in a graph database. There is no graph adapter,
-so a query cannot follow such a relationship; it is refused with
-`query_feature_not_supported`. Leave `edge_type` out.
+An implementation with `edge_type` follows the edges of that type in an Apache
+AGE graph declared on a PostgreSQL source. Both ends name the graph source and
+the dataset's `id`:
+
+```yaml
+- from: {source: graphdb, field: id}
+  to: {source: graphdb, field: id}
+  edge_type: HAS_TICKET
+```
+
+See [Graphs](/catalog/graphs) for the `graph` declaration on the source, what
+`yodb validate` checks, and how a traversal over edges runs. When a relationship
+has both a field-equality and an edge implementation, the field join is used.
+(`neo4j` is still accepted as the edge source's kind, but there is no adapter for
+it, so such a relationship cannot be traversed.)
