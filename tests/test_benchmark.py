@@ -156,6 +156,46 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(connection.cursor_.params["city"], "Tucson")
         self.assertIn("Tucson", gold["question"])
         self.assertEqual(gold["split"], split_of("I01-001", "s"))
+        self.assertTrue(gold["complete"])
+        self.assertTrue(connection.cursor_.sql.rstrip().endswith("LIMIT 501"))      # one past the page tells whether it was cut
+
+    def test_a_result_larger_than_the_page_is_marked_incomplete_and_passed_over_by_the_builder(self) -> None:
+        from benchmark.build import PAGE, build
+
+        class Cursor:
+            description = [type("c", (), {"name": "answer_id"})()]
+
+            def __init__(self, sizes):
+                self.sizes, self.calls = sizes, 0
+
+            def execute(self, sql, params):
+                self.size = self.sizes[self.calls % len(self.sizes)]
+                self.calls += 1
+
+            def fetchall(self):
+                return [(f"id{i}",) for i in range(self.size)]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        class Connection:
+            def __init__(self, sizes):
+                self.cursor_ = Cursor(sizes)
+
+            def cursor(self):
+                return self.cursor_
+
+        template = next(t for t in TEMPLATES if t.id == "S01")
+        pools = {"city": ["A", "B", "C", "D", "E", "F"], "stars_hi": [4.0, 4.5]}
+        questions = build(Connection([PAGE + 1, 3, 0]), seed="s", templates=(template,), pools=pools)
+        self.assertEqual(len(questions), template.instances)
+        complete = [q for q in questions if q["complete"]]
+        self.assertTrue(all(len(q["gold_answer"]) <= PAGE for q in questions))
+        self.assertEqual(len(complete), template.instances)                  # a third of the candidates were complete: exactly enough
+        self.assertTrue(all(q["gold_answer"] for q in complete))
 
 
 class HarnessTests(unittest.TestCase):

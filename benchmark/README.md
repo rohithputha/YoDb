@@ -32,9 +32,14 @@ export YELP_DSN="host=localhost port=55434 dbname=yelp user=postgres password=po
 PYTHONPATH=src python benchmark/build.py --out benchmark/questions.jsonl
 ```
 
-This prints the class counts and how many questions have an empty gold answer (a few are
+This prints the class counts, how many questions have an empty gold answer (a few are
 fine — an empty set is a valid answer — but many mean the slot pools do not fit the sample;
-`--seed` reshuffles). The templates with a similarity search embed their phrase with the same
+`--seed` reshuffles) and how many have a result larger than the 500-row page. The builder draws
+three candidates per instance and prefers the ones whose whole result fits the page and is not
+empty, because a cut-off result makes the answer set depend on which 500 rows the page kept —
+a system that computes the full set (a `SELECT DISTINCT`, say) would then be scored against a
+prefix of it. The questions kept anyway carry `complete: false`; the proposal's sample sizes
+(100k reviews, 50k users) make them rare. The templates with a similarity search embed their phrase with the same
 model as the data (`--embedding-model`, `--no-embeddings` leaves them out).
 
 ## Run a system
@@ -86,7 +91,8 @@ re-makes the tables from the runs on disk.
 - Every gold query asks for the largest page (500) with a deterministic order, and the oracle
   takes the same `LIMIT` in the same order — with `COLLATE "C"` on text columns, because YoDb
   orders ties by code point while a database collation such as `en_US` does not — so the two
-  agree even when a question has more than 500 answers.
+  agree even when a question has more than 500 answers (the builder avoids such questions when
+  it can; see above).
 - The answer set is the distinct values of one row field (`id`, or `alias.id` for the traversed
   side); evidence is every record ID that appeared in any step's rows, by dataset.
 - A second step carries at most 1,000 IDs (YoDb's `in` limit); the gold plans stay well under it.

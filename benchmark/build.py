@@ -25,6 +25,7 @@ from collections.abc import Mapping
 import hashlib
 import itertools
 import json
+import re
 import os
 import random
 import sys
@@ -39,7 +40,7 @@ from yodb.dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(ROOT / ".env")
 
-from benchmark.templates import TEMPLATES, TUNE_FRACTION, Template  # noqa: E402
+from benchmark.templates import PAGE, TEMPLATES, TUNE_FRACTION, Template  # noqa: E402
 
 DEFAULT_SEED = "yodb-bench-v1"
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
@@ -213,9 +214,11 @@ def with_gold(record: dict[str, Any], template: Template, connection, embedder=N
         vector = embedder.embed_texts([params["phrase"]]).__next__()
         params["vector"] = "[" + ",".join(repr(x) for x in vector) + "]"
     with connection.cursor() as cursor:
-        cursor.execute(template.oracle, params)
+        cursor.execute(_one_past_the_page(template.oracle), params)
         names = [column.name for column in cursor.description]
         rows = cursor.fetchall()
+    complete = len(rows) <= PAGE                  # the page holds the whole result: no row was cut off
+    rows = rows[:PAGE]
     answers: dict[str, None] = {}
     evidence: dict[str, dict[str, None]] = {}
     for row in rows:
@@ -226,15 +229,25 @@ def with_gold(record: dict[str, Any], template: Template, connection, embedder=N
                 evidence.setdefault(name[len("evidence_"):], {})[str(value)] = None
     if template.answer_dataset:
         evidence.setdefault(template.answer_dataset, {}).update(answers)
-    return {**record, "gold_answer": list(answers), "gold_evidence": {dataset: list(ids) for dataset, ids in evidence.items()}}
+    return {**record, "gold_answer": list(answers), "gold_evidence": {dataset: list(ids) for dataset, ids in evidence.items()}, "complete": complete}
 
 
-OVERSAMPLE = 3     # candidate instances drawn per template, so ones with an empty gold answer can be passed over
+_PAGE_LIMIT = re.compile(rf"LIMIT {PAGE}\s*$")
+
+
+def _one_past_the_page(oracle: str) -> str:
+    """The oracle asking for one row more than the page, to tell whether the page cut the result."""
+
+    return _PAGE_LIMIT.sub(f"LIMIT {PAGE + 1}", oracle.rstrip())
+
+
+OVERSAMPLE = 3     # candidate instances drawn per template, so ones with an empty or cut-off gold answer can be passed over
 
 
 def build(connection, *, seed: str = DEFAULT_SEED, embedder=None, templates=TEMPLATES, pools=None) -> list[dict[str, Any]]:
-    """Instantiate every template; an instance whose gold answer is empty is passed over while a later
-    candidate has answers (an empty answer is valid, but an informative question is better)."""
+    """Instantiate every template; an instance whose gold answer is empty, or whose result is larger than
+    the page (so the answer set would depend on which 500 rows the page kept), is passed over while a
+    later candidate is complete and non-empty.  The ones kept anyway carry ``complete: false``."""
 
     pools = read_pools(connection) if pools is None else pools
     questions = []
@@ -247,10 +260,11 @@ def build(connection, *, seed: str = DEFAULT_SEED, embedder=None, templates=TEMP
             if len(kept) >= wanted:
                 break
             record = with_gold(instantiate(template, 0, params, seed), template, connection, embedder)
-            if template.expect_error is not None or record["gold_answer"]:
+            if template.expect_error is not None or (record["gold_answer"] and record["complete"]):
                 kept.append(record)
             else:
                 spare.append(record)
+        spare.sort(key=lambda r: (not r["complete"], not r["gold_answer"]))     # cut-off before empty is still better than nothing
         kept.extend(spare[: wanted - len(kept)])
         for index, record in enumerate(kept, start=1):
             question_id = f"{template.id}-{index:03d}"
@@ -285,13 +299,16 @@ def main(argv: list[str] | None = None) -> int:
             handle.write(json.dumps(question, ensure_ascii=False) + "\n")
     classes: dict[str, int] = {}
     splits: dict[str, int] = {}
-    empty = 0
+    empty = cut = 0
     for question in questions:
         classes[question["class"]] = classes.get(question["class"], 0) + 1
         splits[question["split"]] = splits.get(question["split"], 0) + 1
         if question["expect_error"] is None and not question["gold_answer"]:
             empty += 1
-    print(f"wrote {len(questions)} questions to {args.out}: {classes}; splits {splits}; {empty} with an empty gold answer")
+        if not question.get("complete", True):
+            cut += 1
+    print(f"wrote {len(questions)} questions to {args.out}: {classes}; splits {splits}; {empty} with an empty gold answer; "
+          f"{cut} whose result is larger than the {PAGE}-row page" + (" (see benchmark/README.md: those answers depend on the page's order)" if cut else ""))
     return 0
 
 
