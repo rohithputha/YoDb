@@ -33,6 +33,11 @@ from typing import Any
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
+ROOT = HERE.parent.parent if HERE.parent.name == "examples" else HERE.parent
+sys.path.insert(0, str(ROOT / "src"))
+from yodb.dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(ROOT / ".env")
 
 from benchmark.templates import TEMPLATES, TUNE_FRACTION, Template  # noqa: E402
 

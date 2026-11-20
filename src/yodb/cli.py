@@ -37,6 +37,9 @@ from .errors import YoDbError
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from .dotenv import load_dotenv
+
+    load_dotenv()                       # a .env in the working directory or a parent (connection strings, the model)
     parser = _parser()
     args = parser.parse_args(argv)
     try:

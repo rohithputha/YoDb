@@ -1,5 +1,8 @@
 # The natural-language planner
 
+> Connection strings, the model endpoint and the API key can live in a `.env` at the repository root
+> (copy `.env.example`); every script here reads it, and a variable already in the environment wins.
+
 A question becomes a typed YoDb plan: the model writes the plan in the query language, YoDb
 validates it (binding, types, relationships, placement) before anything runs, the coded error
 goes back to the model for at most two repairs, and the accepted plan is executed through the

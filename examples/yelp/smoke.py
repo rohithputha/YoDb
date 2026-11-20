@@ -22,6 +22,11 @@ from yodb.embeddings import FastEmbedProvider
 from yodb.errors import YoDbError
 
 HERE = Path(__file__).parent
+ROOT = HERE.parent.parent if HERE.parent.name == "examples" else HERE.parent
+sys.path.insert(0, str(ROOT / "src"))
+from yodb.dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(ROOT / ".env")
 
 
 def p(field, op, value=None):

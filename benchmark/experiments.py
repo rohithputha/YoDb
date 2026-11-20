@@ -29,6 +29,11 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from yodb.dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(ROOT / ".env")
 
 E1_SYSTEMS = (
     ("planner-full", ["planner", "--schema", "full"]),
@@ -122,8 +127,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=HERE / "results")
     parser.add_argument("--questions", type=Path, default=HERE / "questions.jsonl")
     parser.add_argument("--split", default="held_out", choices=["held_out", "tune", "all"])
-    parser.add_argument("--endpoint", default=None, help="the model endpoint for the planner and the baselines")
-    parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
+    parser.add_argument("--endpoint", default=os.environ.get("YODB_LLM_ENDPOINT") or None, help="the model endpoint for the planner and the baselines (default: $YODB_LLM_ENDPOINT)")
+    parser.add_argument("--model", default=os.environ.get("YODB_LLM_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"), help="default: $YODB_LLM_MODEL")
     parser.add_argument("--api-key", default=None, help="the endpoint's API key (default: $OPENAI_API_KEY)")
     parser.add_argument("--thinking", action="store_true")
     parser.add_argument("--repeat", type=int, default=5, help="timed runs for E2")

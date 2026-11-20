@@ -1,5 +1,8 @@
 # The benchmark
 
+> Connection strings, the model endpoint and the API key can live in a `.env` at the repository root
+> (copy `.env.example`); every script here reads it, and a variable already in the environment wins.
+
 240 parameterized questions over the [Yelp data layer](../examples/yelp), in the four classes of
 the proposal's workload, with executable reference answers; a harness that runs any *system* over
 them; and a scorer for the proposal's metrics. Gold answers come from native SQL over the Yelp

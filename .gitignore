@@ -9,3 +9,4 @@ dist/
 benchmark/runs/
 benchmark/questions.jsonl
 benchmark/results/
+.env

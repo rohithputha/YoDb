@@ -28,6 +28,11 @@ from typing import Any, Protocol
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE.parent / "src"))
+
+from yodb.dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(HERE.parent / ".env")
 
 from benchmark.templates import GRAPH, RELATIONAL, VECTOR  # noqa: E402
 
@@ -259,8 +264,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sequential", action="store_true", help="forced-sequential execution (joins probe by keys, one read at a time): the RQ2 ablation")
     parser.add_argument("-q", "--quiet", action="store_true")
     planner_options = parser.add_argument_group("planner", "options of the natural-language planner")
-    planner_options.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
-    planner_options.add_argument("--endpoint", default=None, help="an OpenAI-compatible chat endpoint (vLLM, or a hosted API such as https://openai.rc.asu.edu/v1); without it the model runs in-process with transformers")
+    planner_options.add_argument("--model", default=os.environ.get("YODB_LLM_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"), help="the model (default: $YODB_LLM_MODEL)")
+    planner_options.add_argument("--endpoint", default=os.environ.get("YODB_LLM_ENDPOINT") or None, help="an OpenAI-compatible chat endpoint (vLLM, or a hosted API such as https://openai.rc.asu.edu/v1); without it the model runs in-process with transformers")
     planner_options.add_argument("--api-key", default=None, help="the endpoint's API key (default: $OPENAI_API_KEY)")
     planner_options.add_argument("--llm-timeout", type=float, default=180.0, help="seconds to wait for one model answer")
     planner_options.add_argument("--thinking", action="store_true", help="let a reasoning model (Qwen3...) think before answering (default: off, /no_think)")

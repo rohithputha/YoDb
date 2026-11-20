@@ -31,6 +31,11 @@ import psycopg
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
+ROOT = HERE.parent.parent if HERE.parent.name == "examples" else HERE.parent
+sys.path.insert(0, str(ROOT / "src"))
+from yodb.dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(ROOT / ".env")
 
 from sample import DEFAULT_SEED, Sample, build_sample  # noqa: E402
 

@@ -1,5 +1,8 @@
 # The Yelp data layer
 
+> Connection strings, the model endpoint and the API key can live in a `.env` at the repository root
+> (copy `.env.example`); every script here reads it, and a variable already in the environment wins.
+
 The Yelp Open Dataset, sampled deterministically into one PostgreSQL with the pgvector and
 Apache AGE extensions, and described by a YoDb catalog. It is the data layer of the
 "Typed Abstract Query Layer" project: relational tables for the structured facts, a vector
