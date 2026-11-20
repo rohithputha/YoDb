@@ -40,7 +40,7 @@ Reply with exactly one JSON object per turn, nothing else:
                                   "answer_from": {"result": <n>, "column": "<column>"}  or  "answer_ids": ["..."],
                                   "evidence": {"<dataset>": {"result": <n>, "column": "<column>"} or ["..."]}}}
       the answer is the set of ids of one dataset: primary-key values (business_id, review_id, user_id, category_id),
-      never names. Prefer answer_from: it means every value of that column of tool result #n, in its order, and
+      never names, even when the question asks for names (the names are read from the ids). Prefer answer_from: it means every value of that column of tool result #n, in its order, and
       costs nothing to write; list answer_ids only to hand-pick ids. evidence names the ids of the other datasets the
       answer rests on, in the same two forms.
   {"tool": "refuse", "arguments": {"code": "unsupported" | "ambiguous" | "not_a_read" | "no_such_data" | "other", "reason": "..."}}
@@ -212,6 +212,10 @@ def resolve_final(arguments: Mapping[str, Any], results: list[list[dict[str, Any
             if not isinstance(column, str) or (rows and not any(column in row for row in rows)):
                 columns = sorted({key for row in rows for key in row})
                 raise BadReference(f"{what} refers to column {column!r} of {reference_key} #{number}, whose columns are {columns}.")
+            if not _ID_COLUMN.match(column):
+                # The same contract the typed systems are held to (their answer field must be an id): the
+                # answer is ids, even when the question asks for names.
+                raise BadReference(f"{what} refers to column {column!r}, which is not an id column: the answer is ids (business_id, user_id, ... or a Cypher id column), even when the question asks for names.")
             return list(dict.fromkeys(str(row[column]) for row in rows if row.get(column) is not None))
         if isinstance(value, list):
             return list(dict.fromkeys(str(i) for i in value if i is not None))
@@ -221,6 +225,9 @@ def resolve_final(arguments: Mapping[str, Any], results: list[list[dict[str, Any
     evidence_raw = arguments.get("evidence") or {}
     evidence = {str(k): ids_of(v, f"evidence[{k!r}]") for k, v in evidence_raw.items()} if isinstance(evidence_raw, Mapping) else {}
     return answer, {k: v for k, v in evidence.items() if v}
+
+
+_ID_COLUMN = re.compile(r"^(.*_)?id$|^c\d+$|^id\d*$", re.IGNORECASE)     # business_id, id, u_id, c0 (Cypher)
 
 
 class BadReference(ValueError):

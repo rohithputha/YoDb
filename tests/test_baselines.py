@@ -157,6 +157,17 @@ class ToolAgentTests(unittest.TestCase):
         self.assertEqual(prediction.answer, [b["business_id"] for b in BUSINESSES if b["stars"] >= 4.5])
         self.assertTrue(prediction.plan_valid)
 
+    def test_a_reference_to_a_name_column_is_refused_as_the_answer_is_ids(self) -> None:
+        agent = self.agent([
+            call("sql", query="SELECT business_id FROM yelp.business WHERE stars >= 4.5"),
+            call("final", answer_dataset="business", answer_from={"result": 1, "column": "name"}),
+            call("final", answer_dataset="business", answer_from={"result": 1, "column": "business_id"}),
+        ])
+        prediction = agent.answer({"id": "q", "question": "Give their names"})
+        self.assertEqual(prediction.repairs, 1)
+        self.assertIn("not an id column", self.generator.calls[2][-1]["content"])
+        self.assertEqual(prediction.answer, ["b1"])
+
     def test_the_system_prompt_carries_the_raw_schemas_and_the_tools(self) -> None:
         agent = self.agent([call("refuse", code="other", reason="x")])
         agent.answer({"id": "x", "question": "q"})

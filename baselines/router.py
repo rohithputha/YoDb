@@ -82,7 +82,8 @@ SCHEMAS
 AGGREGATE = """\
 You are given a question and the numbered sub-answers tools produced for it (rows with ids). Decide the final answer: the
 set of ids of one dataset that answers the question, using only ids that appear in the sub-answers. The ids are primary-key
-values (business_id, review_id, user_id, category_id), never names. Reply with exactly one JSON object:
+values (business_id, review_id, user_id, category_id), never names, even when the question asks for names (the names are
+read from the ids). Reply with exactly one JSON object:
 {"answer_dataset": "<business|review|user|category>",
  "answer_from": {"sub_answer": <n>, "column": "<column>"}  or  "answer_ids": ["..."],
  "evidence": {"<dataset>": {"sub_answer": <n>, "column": "<column>"} or ["..."]}}

@@ -19,7 +19,8 @@ or by reference (`answer_from: {"result": n, "column": c}` for the agent, `{"sub
 for the router): every value of that column of that result, in its order. The reference form is
 what a framework does when it takes the ids from an engine's source rows, and it keeps a 500-id
 answer from costing thousands of output tokens; a reference to a result or column that does not
-exist is reported back to the model once, as a tool error, for it to correct. Both prompts say that
+exist, or to a column that is not an id column, is reported back to the model once, as a tool error, for it
+to correct (the typed systems are held to the same contract: their answer field must be an id). Both prompts say that
 the answer ids are primary-key values (`business_id`, `review_id`, `user_id`, `category_id`), never
 names, and that every query must select the id column of the entity it asks about.
 
