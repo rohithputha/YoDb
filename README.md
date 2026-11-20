@@ -24,7 +24,7 @@ The longer-term vision is to extend YoDb beyond PostgreSQL to heterogeneous data
 *YoDb is in active development. PostgreSQL (with the pgvector and Apache AGE extensions) is currently the supported backend; additional sources and visual retrieval are not yet implemented.*
 
 **The research project around it** (CSE 598, *A Typed Abstract Query Layer for Heterogeneous
-Retrieval in AI Agent Workflows*; see [REPORT.md](REPORT.md)):
+Retrieval in AI Agent Workflows*; see [REPORT.md](REPORT.md); **start with [RUNBOOK.md](RUNBOOK.md)**):
 
 | Directory | What |
 | --- | --- |
