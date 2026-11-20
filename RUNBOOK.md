@@ -25,7 +25,7 @@ which is what makes the sweep take about an hour instead of most of a day agains
 
 ```bash
 # 1. a compute session: 16 cores and 64 GB for the embeddings; 12 hours covers the target preset comfortably
-interactive -p general -q public -c 16 --mem=64G -t 0-12:00
+interactive -p public -q public -c 16 --mem=64G -t 0-12:00      # -p htc also works but is capped at 4 hours
 
 # 2. Python >= 3.11 (Sol's default python is older): one of
 module load mamba/latest && mamba create -n yodb python=3.12 -y && source activate yodb
