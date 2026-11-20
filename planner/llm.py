@@ -34,7 +34,7 @@ class Generation:
 class Generator(Protocol):
     name: str
 
-    def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None) -> Generation: ...
+    def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None, max_tokens: int | None = None) -> Generation: ...
 
 
 class OpenAICompatibleGenerator:
@@ -46,7 +46,7 @@ class OpenAICompatibleGenerator:
         *,
         base_url: str = "http://localhost:8000/v1",
         api_key: str | None = None,
-        max_tokens: int = 1500,
+        max_tokens: int = 4000,
         guided: bool = True,
         timeout: float = 120.0,
         thinking: bool = False,
@@ -66,7 +66,7 @@ class OpenAICompatibleGenerator:
     # OpenAI's structured outputs, vLLM's guided decoding, plain JSON mode, nothing.
     MODES = ("json_schema", "guided_json", "json_object", "none")
 
-    def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None) -> Generation:
+    def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None, max_tokens: int | None = None) -> Generation:
         import urllib.error
 
         modes = [m for m in self.MODES if self.guided or m in ("json_object", "none")] if json_schema is not None else ["none"]
@@ -78,7 +78,7 @@ class OpenAICompatibleGenerator:
         last_error: Exception | None = None
         for mode in modes:
             body: dict[str, Any] = {
-                "model": self.model, "messages": messages, "temperature": 0, "max_tokens": self.max_tokens, "seed": 0,
+                "model": self.model, "messages": messages, "temperature": 0, "max_tokens": max_tokens or self.max_tokens, "seed": 0,
             }
             if mode == "json_schema":
                 body["response_format"] = {"type": "json_schema", "json_schema": {"name": "output", "schema": json_schema}}
@@ -149,7 +149,7 @@ class TransformersGenerator:
         except ImportError:
             pass
 
-    def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None) -> Generation:
+    def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None, max_tokens: int | None = None) -> Generation:
         import torch
 
         prompt = self.tokenizer.apply_chat_template(list(messages), tokenize=False, add_generation_prompt=True)
@@ -158,11 +158,11 @@ class TransformersGenerator:
         if json_schema is not None and self._outlines is not None:
             model = self._outlines.models.Transformers(self.model, self.tokenizer)
             generator = self._outlines.generate.json(model, json.dumps(json_schema))
-            text = json.dumps(generator(prompt, max_tokens=self.max_new_tokens))
+            text = json.dumps(generator(prompt, max_tokens=max_tokens or self.max_new_tokens))
             tokens_out = len(self.tokenizer(text)["input_ids"])
         else:
             with torch.no_grad():
-                output = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens, do_sample=False)
+                output = self.model.generate(**inputs, max_new_tokens=max_tokens or self.max_new_tokens, do_sample=False)
             generated = output[0][inputs["input_ids"].shape[1]:]
             text = strip_thinking(self.tokenizer.decode(generated, skip_special_tokens=True))
             tokens_out = int(generated.shape[0])
@@ -179,7 +179,7 @@ class ScriptedGenerator:
         self._respond = respond
         self.calls: list[list[dict[str, str]]] = []
 
-    def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None) -> Generation:
+    def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None, max_tokens: int | None = None) -> Generation:
         self.calls.append(list(messages))
         if self._respond is not None:
             answer = self._respond(messages)

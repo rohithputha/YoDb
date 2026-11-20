@@ -29,8 +29,8 @@ CONDITION: dict[str, Any] = {
             "required": ["field", "op"],
             "additionalProperties": False,
         },
-        {"type": "object", "properties": {"all": {"type": "array", "items": {"$ref": "#/$defs/condition"}, "minItems": 1}}, "required": ["all"], "additionalProperties": False},
-        {"type": "object", "properties": {"any": {"type": "array", "items": {"$ref": "#/$defs/condition"}, "minItems": 1}}, "required": ["any"], "additionalProperties": False},
+        {"type": "object", "properties": {"all": {"type": "array", "items": {"$ref": "#/$defs/condition"}}}, "required": ["all"], "additionalProperties": False},
+        {"type": "object", "properties": {"any": {"type": "array", "items": {"$ref": "#/$defs/condition"}}}, "required": ["any"], "additionalProperties": False},
         {"type": "object", "properties": {"not": {"$ref": "#/$defs/condition"}}, "required": ["not"], "additionalProperties": False},
         {"type": "object", "properties": {"rule": {"type": "string"}}, "required": ["rule"], "additionalProperties": False},
         {
@@ -38,7 +38,7 @@ CONDITION: dict[str, Any] = {
             "properties": {
                 "similar": {
                     "type": "object",
-                    "properties": {"field": {"type": "string"}, "text": {"type": "string"}, "top": {"type": "integer", "minimum": 1, "maximum": 1000}},
+                    "properties": {"field": {"type": "string"}, "text": {"type": "string"}, "top": {"type": "integer"}},
                     "required": ["field", "text"],
                     "additionalProperties": False,
                 }
@@ -57,8 +57,6 @@ QUERY: dict[str, Any] = {
         "where": {"$ref": "#/$defs/condition"},
         "traverse": {
             "type": "array",
-            "minItems": 1,
-            "maxItems": 1,
             "items": {
                 "type": "object",
                 "properties": {
@@ -82,12 +80,15 @@ QUERY: dict[str, Any] = {
                 "additionalProperties": False,
             },
         },
-        "page": {"type": "object", "properties": {"first": {"type": "integer", "minimum": 1, "maximum": 500}}, "required": ["first"], "additionalProperties": False},
+        "page": {"type": "object", "properties": {"first": {"type": "integer"}}, "required": ["first"], "additionalProperties": False},
     },
     "required": ["from"],
     "additionalProperties": False,
 }
 
+# One flat object: a plan answer fills "plan", "answer_field" and "sources"; a refusal fills "refuse".  The planner
+# checks that exactly one of the two is present.  Kept simple on purpose (no top-level anyOf, no integer bounds):
+# a grammar compiler that cannot realise one branch of an anyOf would leave the model only the other.
 OUTPUT: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "PlannerOutput",
@@ -99,7 +100,7 @@ OUTPUT: dict[str, Any] = {
             "properties": {
                 "$ids": {
                     "type": "object",
-                    "properties": {"step": {"type": "integer", "minimum": 0}, "field": {"type": "string"}},
+                    "properties": {"step": {"type": "integer"}, "field": {"type": "string"}},
                     "required": ["step", "field"],
                     "additionalProperties": False,
                 }
@@ -108,31 +109,19 @@ OUTPUT: dict[str, Any] = {
             "additionalProperties": False,
         },
     },
-    "anyOf": [
-        {
+    "type": "object",
+    "properties": {
+        "plan": {"type": "array", "items": {"$ref": "#/$defs/query"}},
+        "answer_field": {"type": "string"},
+        "sources": {"type": "array", "items": {"type": "string", "enum": ["relational", "vector", "graph"]}},
+        "refuse": {
             "type": "object",
-            "properties": {
-                "plan": {"type": "array", "items": {"$ref": "#/$defs/query"}, "minItems": 1, "maxItems": 2},
-                "answer_field": {"type": "string"},
-                "sources": {"type": "array", "items": {"type": "string", "enum": ["relational", "vector", "graph"]}},
-            },
-            "required": ["plan", "answer_field", "sources"],
+            "properties": {"code": {"type": "string", "enum": REFUSAL_CODES}, "reason": {"type": "string"}},
+            "required": ["code", "reason"],
             "additionalProperties": False,
         },
-        {
-            "type": "object",
-            "properties": {
-                "refuse": {
-                    "type": "object",
-                    "properties": {"code": {"type": "string", "enum": REFUSAL_CODES}, "reason": {"type": "string"}},
-                    "required": ["code", "reason"],
-                    "additionalProperties": False,
-                }
-            },
-            "required": ["refuse"],
-            "additionalProperties": False,
-        },
-    ],
+    },
+    "additionalProperties": False,
 }
 
 

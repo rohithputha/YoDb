@@ -22,6 +22,7 @@ from planner.llm import Generator
 from planner.planner import PlanRejected
 
 MAX_TURNS = 8
+LONG_ANSWER_TOKENS = 12_000          # a final answer may list up to 500 ids
 TOOL_KINDS = {"sql": "relational", "vector_search": "vector", "cypher": "graph"}
 
 SYSTEM = """\
@@ -104,7 +105,7 @@ class ToolAgent:
         retrieval_ms = 0.0
         finished = False
         for _ in range(self.max_turns + 1):
-            generation = self.generator.generate(conversation, json_schema=TOOL_CALL_SCHEMA if self.grammar else None)
+            generation = self.generator.generate(conversation, json_schema=TOOL_CALL_SCHEMA if self.grammar else None, max_tokens=LONG_ANSWER_TOKENS)
             prediction.tokens_in += generation.tokens_in
             prediction.tokens_out += generation.tokens_out
             conversation.append({"role": "assistant", "content": generation.text})

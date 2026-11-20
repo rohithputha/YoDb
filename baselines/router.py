@@ -30,6 +30,7 @@ from planner.llm import Generator
 from planner.planner import PlanRejected, parse_output
 
 ENGINES = ("sql", "vector", "graph")
+LONG_ANSWER_TOKENS = 12_000          # an answer may list up to 500 ids
 ENGINE_KINDS = {"sql": "relational", "vector": "vector", "graph": "graph"}
 
 DECOMPOSE = """\
@@ -79,6 +80,7 @@ AGGREGATE = """\
 You are given a question and the sub-answers tools produced for it (rows with ids). Decide the final answer: the set of ids
 of one dataset that answers the question, using only ids that appear in the sub-answers. Reply with exactly one JSON object:
 {"answer_dataset": "<business|review|user|category>", "answer_ids": ["..."], "evidence": {"<dataset>": ["..."]}}
+List every id that answers the question (up to 500), exactly as it appears in the sub-answers.
 """
 
 _SCHEMA_DECOMPOSE: dict[str, Any] = {
@@ -162,7 +164,7 @@ class RouterSystem:
         try:
             final = self._json(
                 [{"role": "system", "content": AGGREGATE}, {"role": "user", "content": f"Question: {question}\n\n{context}"}],
-                prediction, _SCHEMA_FINAL,
+                prediction, _SCHEMA_FINAL, max_tokens=LONG_ANSWER_TOKENS,
             )
         except PlanRejected:
             prediction.error = "router_output_invalid"
@@ -205,8 +207,8 @@ class RouterSystem:
         prediction.native_errors += int(result.native_error)
         return SubAnswer(sub_question, tool, native, result.text, result.rows, result.native_error, result.latency_ms)
 
-    def _json(self, messages: list[dict[str, str]], prediction: Prediction, schema: dict[str, Any] | None) -> dict[str, Any]:
-        generation = self.generator.generate(messages, json_schema=schema if self.grammar else None)
+    def _json(self, messages: list[dict[str, str]], prediction: Prediction, schema: dict[str, Any] | None, max_tokens: int | None = None) -> dict[str, Any]:
+        generation = self.generator.generate(messages, json_schema=schema if self.grammar else None, max_tokens=max_tokens)
         prediction.tokens_in += generation.tokens_in
         prediction.tokens_out += generation.tokens_out
         return parse_json_object(generation.text)

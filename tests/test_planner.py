@@ -89,8 +89,13 @@ class PromptTests(unittest.TestCase):
 
     def test_the_output_schema_is_valid_json_and_covers_both_answers(self) -> None:
         schema = json.loads(output_schema_json())
-        self.assertEqual(len(schema["anyOf"]), 2)
+        self.assertEqual(set(schema["properties"]), {"plan", "answer_field", "sources", "refuse"})
+        self.assertNotIn("anyOf", schema)                                       # one flat object: every branch is reachable
+        self.assertNotIn("minimum", json.dumps(schema))
         self.assertIn("condition", OUTPUT["$defs"])
+        both = parse_output('{"plan": [{"from": {"dataset": "customer"}}], "answer_field": "id", "sources": [], "refuse": {"code": "other", "reason": "x"}}')
+        self.assertNotIn("refuse", both)                                        # a plan given beside a refusal counts as the plan
+        self.assertEqual(set(parse_output('{"plan": [], "refuse": {"code": "ambiguous", "reason": "x"}}')), {"refuse"})
 
 
 class ParseTests(unittest.TestCase):
