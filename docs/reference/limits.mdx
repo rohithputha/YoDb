@@ -91,9 +91,11 @@ The sections below give the detail.
 
 ## Ordering
 
-Text ordered across several sources is sorted by code point at the coordinator,
-which differs from a database collation for mixed-case text. A single-source query
-orders text in the database.
+Text is ordered by code point everywhere (uppercase before lowercase, as in a `"C"`
+collation): the SQL YoDb sends orders text columns with `COLLATE "C"`, and the coordinator
+sorts the same way, so a query returns the same page whether a database or YoDb ordered it
+and never depends on the database's locale. A column the inspection saw as non-text (an
+integer or uuid `id`) is ordered by its own type.
 
 ## Planning
 
