@@ -117,10 +117,10 @@ def load_tables(connection, sample: Sample) -> None:
 # --- embeddings --------------------------------------------------------------------------------------
 
 
-def load_embeddings(connection, model_name: str, batch_size: int) -> None:
+def load_embeddings(connection, model_name: str, batch_size: int, threads: int | None = None) -> None:
     from yodb.embeddings import FastEmbedProvider
 
-    provider = FastEmbedProvider(model_name)
+    provider = FastEmbedProvider(model_name, threads=threads)
     log(f"  embedding model {provider.info.model}: {provider.dimensions} dimensions")
     with connection.cursor() as cursor:
         cursor.execute("SELECT review_id, text FROM yelp.review WHERE text IS NOT NULL AND btrim(text) <> '' ORDER BY review_id")
@@ -231,6 +231,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", default=DEFAULT_SEED)
     parser.add_argument("--embedding-model", default=DEFAULT_MODEL)
     parser.add_argument("--batch-size", type=int, default=256, help="rows per embedding call and per graph statement")
+    parser.add_argument("--threads", type=int, default=int(os.environ.get("YODB_EMBED_THREADS", "0")) or None,
+                        help="CPU threads the embedding runtime may use (default: the runtime's choice; try 1 or 4 if it hangs)")
     parser.add_argument("--dry-run", action="store_true", help="sample and print the counts; touch no database")
     parser.add_argument("--save-sample", type=Path, help="also write the sampled IDs as JSON (for reproducibility notes)")
     args = parser.parse_args(argv)
@@ -278,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
             load_tables(connection, sample)
         if "embeddings" in args.steps:
             log("embedding reviews")
-            load_embeddings(connection, args.embedding_model, args.batch_size)
+            load_embeddings(connection, args.embedding_model, args.batch_size, args.threads)
         if "graph" in args.steps:
             log("loading the graph")
             load_graph(connection, args.batch_size)
