@@ -11,17 +11,24 @@ repair count.
     PYTHONPATH=src python benchmark/harness.py planner --endpoint http://localhost:8000/v1 --schema retrieved
 
 ``--repeat N`` runs every question N times after an optional warm-up and keeps every timing
-(the proposal's latency protocol); the scorer uses the medians per question.
+(the proposal's latency protocol); the scorer uses the medians per question.  ``--workers N``
+answers N questions at a time (a vLLM endpoint batches them, so a model-bound run gets close to
+N times faster); latencies then include queueing at the endpoint, so the timed experiment (E2,
+no model) stays sequential.  ``--resume`` keeps the predictions already in the output file and
+answers only the questions that are missing.
 """
 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterable, Mapping, Sequence
+import inspect
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -226,38 +233,88 @@ def load_questions(path: Path, *, split: str | None = None, classes: set[str] | 
     return questions
 
 
-def run(system: System, questions: Sequence[Mapping[str, Any]], out: Path, *, repeat: int = 1, warm_up: bool = False, quiet: bool = False, verbose: bool = False) -> list[Prediction]:
+def run(
+    system: System | Callable[[], System], questions: Sequence[Mapping[str, Any]], out: Path, *,
+    repeat: int = 1, warm_up: bool = False, quiet: bool = False, verbose: bool = False, workers: int = 1, resume: bool = False,
+) -> list[Prediction]:
+    """Answer every question (``repeat`` times each) and append each prediction to ``out`` as it is made.
+
+    ``system`` is a system, or a factory of systems when ``workers`` > 1: each worker thread answers with
+    its own instance (its own store connections), so the systems need not be thread-safe.  With ``resume``,
+    the (question, run) pairs already in ``out`` are kept and skipped.
+    """
+
+    done: set[tuple[str, int]] = set()
     predictions: list[Prediction] = []
-    if warm_up and questions:
-        system.answer(questions[0])
-    with out.open("w", encoding="utf-8") as handle:
-        for index, question in enumerate(questions, start=1):
-            for repetition in range(repeat):
-                try:
-                    prediction = system.answer(question)
-                except Exception as error:                      # a crashed system call is this question's failure, not the run's
-                    prediction = Prediction(id=question["id"], error=f"system_error:{type(error).__name__}", plan_valid=False)
-                    if not quiet:
-                        print(f"    {question['id']}: {type(error).__name__}: {str(error)[:200]}", flush=True)
-                prediction.id = question["id"]
-                prediction.run = repetition
-                predictions.append(prediction)
-                handle.write(json.dumps(asdict(prediction), ensure_ascii=False) + "\n")
-                handle.flush()
+    if resume and out.is_file():
+        for line in out.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                record = json.loads(line)
+                done.add((record["id"], record.get("run", 0)))
+    todo = [(question, repetition) for question in questions for repetition in range(repeat) if (question["id"], repetition) not in done]
+    if done and not quiet:
+        print(f"resuming: {len(done)} predictions kept, {len(todo)} to go", flush=True)
+    is_instance = inspect.ismethod(getattr(system, "answer", None))                   # a system has a bound answer(); a factory does not
+    make: Callable[[], System] = (lambda: system) if is_instance else system           # type: ignore[assignment,return-value]
+    lock = threading.Lock()
+    finished = 0
+
+    def answer_with(worker_system: System, question: Mapping[str, Any], repetition: int) -> Prediction:
+        try:
+            prediction = worker_system.answer(question)
+        except Exception as error:                      # a crashed system call is this question's failure, not the run's
+            prediction = Prediction(id=question["id"], error=f"system_error:{type(error).__name__}", plan_valid=False)
             if not quiet:
-                last = predictions[-1]
-                outcome = f"error={last.error}" if last.error else (f"refused ({last.refusal_code})" if last.refused else f"{len(last.answer)} answers")
-                gold = question.get("gold_answer")
-                expected = f", gold {len(gold)}" if gold is not None and question.get("expect_error") is None else (f", expects {question['expect_error']}" if question.get("expect_error") else "")
-                print(f"[{index}/{len(questions)}] {question['id']}: {outcome}{expected} in {last.latency_ms or 0:.0f} ms"
-                      + (f", {last.repairs} repair(s)" if last.repairs else ""), flush=True)
-                if verbose:
-                    print(f"    question: {question['question']}")
-                    for step in last.plan:
-                        print(f"    plan: {json.dumps(step, ensure_ascii=False)}")
-                    if last.answer:
-                        print(f"    answer: {last.answer[:5]}{' ...' if len(last.answer) > 5 else ''}")
+                print(f"    {question['id']}: {type(error).__name__}: {str(error)[:200]}", flush=True)
+        prediction.id = question["id"]
+        prediction.run = repetition
+        return prediction
+
+    def record(question: Mapping[str, Any], prediction: Prediction, handle) -> None:
+        nonlocal finished
+        with lock:
+            finished += 1
+            predictions.append(prediction)
+            handle.write(json.dumps(asdict(prediction), ensure_ascii=False) + "\n")
+            handle.flush()
+            if not quiet and prediction.run == repeat - 1:
+                _report(finished, len(todo), question, prediction, verbose)
+
+    with out.open("a" if resume else "w", encoding="utf-8") as handle:
+        if workers <= 1 or len(todo) <= 1:
+            one = make()
+            if warm_up and questions:
+                one.answer(questions[0])
+            for question, repetition in todo:
+                record(question, answer_with(one, question, repetition), handle)
+        else:
+            local = threading.local()
+
+            def work(item: tuple[Mapping[str, Any], int]) -> None:
+                if not hasattr(local, "system"):
+                    local.system = make()
+                    if warm_up and questions:
+                        local.system.answer(questions[0])
+                question, repetition = item
+                record(question, answer_with(local.system, question, repetition), handle)
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                list(pool.map(work, todo))
     return predictions
+
+
+def _report(index: int, total: int, question: Mapping[str, Any], last: Prediction, verbose: bool) -> None:
+    outcome = f"error={last.error}" if last.error else (f"refused ({last.refusal_code})" if last.refused else f"{len(last.answer)} answers")
+    gold = question.get("gold_answer")
+    expected = f", gold {len(gold)}" if gold is not None and question.get("expect_error") is None else (f", expects {question['expect_error']}" if question.get("expect_error") else "")
+    print(f"[{index}/{total}] {question['id']}: {outcome}{expected} in {last.latency_ms or 0:.0f} ms"
+          + (f", {last.repairs} repair(s)" if last.repairs else ""), flush=True)
+    if verbose:
+        print(f"    question: {question['question']}")
+        for step in last.plan:
+            print(f"    plan: {json.dumps(step, ensure_ascii=False)}")
+        if last.answer:
+            print(f"    answer: {last.answer[:5]}{' ...' if len(last.answer) > 5 else ''}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -276,6 +333,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--embedding-model", default="BAAI/bge-small-en-v1.5")
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--sequential", action="store_true", help="forced-sequential execution (joins probe by keys, one read at a time): the RQ2 ablation")
+    parser.add_argument("--workers", type=int, default=1, help="questions answered at a time (model-bound runs; latencies then include queueing)")
+    parser.add_argument("--resume", action="store_true", help="keep the predictions already in the output file and answer only the missing questions")
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true", help="print each question, the plan the system ran and the first answers")
     planner_options = parser.add_argument_group("planner", "options of the natural-language planner")
@@ -309,16 +368,22 @@ def main(argv: list[str] | None = None) -> int:
     policies = (
         {"join_policy": JoinPolicy(parallel="never"), "execution_policy": FederatedExecutionPolicy(concurrency=1)} if args.sequential else {}
     )
-    with yodb.connect(args.catalog, embedder=embedder, **policies) as db:
+    with yodb.connect(args.catalog, embedder=embedder, pool_size=max(10, args.workers + 2), **policies) as db:
         if args.system == "gold":
-            system: System = GoldPlanSystem(db, timeout=args.timeout)
+            def make() -> System:
+                return GoldPlanSystem(db, timeout=args.timeout)
         else:
             from planner.llm import OpenAICompatibleGenerator, TransformersGenerator
 
-            generator = (
-                OpenAICompatibleGenerator(args.model, base_url=args.endpoint, api_key=args.api_key, timeout=args.llm_timeout, thinking=args.thinking)
-                if args.endpoint else TransformersGenerator(args.model)
-            )
+            if not args.endpoint:
+                in_process = TransformersGenerator(args.model)                 # one model in memory, shared
+
+            def generator():
+                return (
+                    OpenAICompatibleGenerator(args.model, base_url=args.endpoint, api_key=args.api_key, timeout=args.llm_timeout, thinking=args.thinking)
+                    if args.endpoint else in_process
+                )
+
             if args.system == "planner":
                 from planner import NaturalLanguagePlanner, PlannerConfig
                 from planner.sssi import SchemaIndex
@@ -326,23 +391,28 @@ def main(argv: list[str] | None = None) -> int:
                 index = SchemaIndex(db.catalog, embedder) if args.schema == "retrieved" else None
                 config = PlannerConfig(representation=args.schema, repairs=args.repairs, grammar=args.grammar, top_k=args.top_k,
                                        examples=not args.no_examples, timeout=args.timeout)
-                system = NaturalLanguagePlanner(db, generator, config, index=index)
+
+                def make() -> System:
+                    return NaturalLanguagePlanner(db, generator(), config, index=index)       # the db pools its connections
             else:
                 from baselines.tools import RawStores
 
                 if not args.dsn:
                     parser.error("the baselines need --dsn (or $YODB_CONN_YELP): they read the stores directly")
-                stores = RawStores(args.dsn, embedder, statement_timeout_seconds=args.timeout)
-                if args.system == "tool-agent":
-                    from baselines.tool_agent import ToolAgent
+                schema_text = RawStores(args.dsn, embedder, statement_timeout_seconds=args.timeout).schema_text()
 
-                    system = ToolAgent(stores, generator, max_turns=args.max_turns, grammar=args.grammar)
-                else:
+                def make() -> System:
+                    stores = RawStores(args.dsn, embedder, statement_timeout_seconds=args.timeout)     # one connection per worker
+                    if args.system == "tool-agent":
+                        from baselines.tool_agent import ToolAgent
+
+                        return ToolAgent(stores, generator(), max_turns=args.max_turns, grammar=args.grammar, schema_text=schema_text)
                     from baselines.router import RouterSystem
 
-                    system = RouterSystem(stores, generator, grammar=args.grammar)
-            out = args.out or HERE / "runs" / f"{system.name}{'-sequential' if args.sequential else ''}.jsonl"
-        predictions = run(system, questions, out, repeat=args.repeat, warm_up=args.warm_up, quiet=args.quiet, verbose=args.verbose)
+                    return RouterSystem(stores, generator(), grammar=args.grammar, schema_text=schema_text)
+            out = args.out or HERE / "runs" / f"{make().name}{'-sequential' if args.sequential else ''}.jsonl"
+        predictions = run(make, questions, out, repeat=args.repeat, warm_up=args.warm_up, quiet=args.quiet, verbose=args.verbose,
+                          workers=args.workers, resume=args.resume)
     print(f"wrote {len(predictions)} predictions to {out}")
     return 0
 

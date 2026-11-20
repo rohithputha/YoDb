@@ -3,6 +3,7 @@
     export YELP_DSN=...  YODB_CONN_YELP=...
     PYTHONPATH=src python benchmark/experiments.py all --endpoint http://localhost:8000/v1 [--repeat 5] [--out benchmark/results]
     PYTHONPATH=src python benchmark/experiments.py e2 --repeat 5            # one experiment
+    PYTHONPATH=src python benchmark/experiments.py e1 --workers 8 --resume  # model-bound runs, 8 questions at a time, continuing a run that stopped
     PYTHONPATH=src python benchmark/experiments.py tables                   # re-make the tables from the runs on disk
 
 E1 (RQ1)  accuracy by query class: the planner (full schema) against B1, B2 and B3, on the held-out split.
@@ -52,14 +53,18 @@ ABLATIONS = (
 )
 
 
-def run_system(name: str, arguments: list[str], out_dir: Path, *, common: list[str], repeat: int = 1, warm_up: bool = False, resources: dict) -> Path:
+def run_system(name: str, arguments: list[str], out_dir: Path, *, common: list[str], repeat: int = 1, warm_up: bool = False, resources: dict, workers: int = 1, resume: bool = False) -> Path:
     out = out_dir / "runs" / f"{name}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
-    command = [sys.executable, str(HERE / "harness.py"), *arguments, "--out", str(out), "-q", *common]
+    command = [sys.executable, str(HERE / "harness.py"), *arguments, "--out", str(out), *common]
     if repeat > 1:
         command += ["--repeat", str(repeat)]
     if warm_up:
         command.append("--warm-up")
+    if workers > 1:
+        command += ["--workers", str(workers)]
+    if resume:
+        command.append("--resume")
     print(f"\n### {name}: {' '.join(command[2:])}", flush=True)
     started = time.perf_counter()
     environment = {**os.environ, "PYTHONPATH": str(ROOT / "src") + os.pathsep + os.environ.get("PYTHONPATH", "")}
@@ -133,30 +138,34 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--thinking", action="store_true")
     parser.add_argument("--repeat", type=int, default=5, help="timed runs for E2")
     parser.add_argument("--dsn", default=os.environ.get("YODB_CONN_YELP"))
+    parser.add_argument("--workers", type=int, default=1, help="questions answered at a time in the model-bound runs (E1, E3, ablations); E2 stays sequential")
+    parser.add_argument("--resume", action="store_true", help="keep the predictions already on disk and answer only the missing questions")
+    parser.add_argument("-q", "--quiet", action="store_true", help="no per-question lines")
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     split = None if args.split == "all" else args.split
     common = (
         ["--questions", str(args.questions), "--model", args.model] + (["--split", split] if split else [])
         + (["--endpoint", args.endpoint] if args.endpoint else []) + (["--api-key", args.api_key] if args.api_key else [])
-        + (["--thinking"] if args.thinking else []) + (["--dsn", args.dsn] if args.dsn else [])
+        + (["--thinking"] if args.thinking else []) + (["--dsn", args.dsn] if args.dsn else []) + (["-q"] if args.quiet else [])
     )
+    model_bound = dict(workers=args.workers, resume=args.resume)
     resources_path = args.out / "resources.json"
     resources = json.loads(resources_path.read_text()) if resources_path.is_file() else {}
     runs: dict[str, dict[str, Path]] = {"E1": {}, "E2": {}, "E3": {}, "Ablations": {}}
 
     if args.experiment in ("all", "e1"):
         for name, arguments in E1_SYSTEMS:
-            runs["E1"][name] = run_system(name, arguments, args.out, common=common, resources=resources)
+            runs["E1"][name] = run_system(name, arguments, args.out, common=common, resources=resources, **(model_bound if name != "gold" else {}))
     if args.experiment in ("all", "e2"):
         runs["E2"]["dag"] = run_system("gold-dag", ["gold"], args.out, common=common, repeat=args.repeat, warm_up=True, resources=resources)
         runs["E2"]["sequential"] = run_system("gold-sequential", ["gold", "--sequential"], args.out, common=common, repeat=args.repeat, warm_up=True, resources=resources)
     if args.experiment in ("all", "e3"):
         for name, arguments in E3_SYSTEMS:
-            runs["E3"][name] = run_system(name, arguments, args.out, common=common, resources=resources)
+            runs["E3"][name] = run_system(name, arguments, args.out, common=common, resources=resources, **model_bound)
     if args.experiment in ("all", "ablations"):
         for name, arguments in ABLATIONS:
-            runs["Ablations"][name] = run_system(name, arguments, args.out, common=common, resources=resources)
+            runs["Ablations"][name] = run_system(name, arguments, args.out, common=common, resources=resources, **model_bound)
     if args.experiment == "tables":
         runs = {
             "E1": {n: args.out / "runs" / f"{n}.jsonl" for n, _ in E1_SYSTEMS},

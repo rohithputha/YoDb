@@ -48,6 +48,7 @@ model as the data (`--embedding-model`, `--no-embeddings` leaves them out).
 export YODB_CONN_YELP="host=localhost port=55434 dbname=yelp user=yodb_ro password=yodb_ro"
 PYTHONPATH=src python benchmark/harness.py gold --out benchmark/runs/gold.jsonl
 PYTHONPATH=src python benchmark/harness.py gold --split held_out --repeat 5 --warm-up     # the latency protocol
+PYTHONPATH=src python benchmark/harness.py tool-agent --workers 8 --resume                # 8 questions at a time; continue a stopped run
 ```
 
 `gold` runs each question's gold plan through YoDb: the oracle-plan pipeline (**B3**). Its answer

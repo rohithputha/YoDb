@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 import sys
 import unittest
@@ -256,6 +257,51 @@ class HarnessTests(unittest.TestCase):
         prediction = GoldPlanSystem(self.db).answer({"id": "X06-001", "plan": [], "answer_field": "id", "answer_dataset": ""})
         self.assertTrue(prediction.refused)
         self.assertEqual(prediction.error, "refusal")
+
+
+class RunLoopTests(unittest.TestCase):
+    """The harness loop: workers each get their own system, a crash is the question's error, resume skips what is done."""
+
+    def test_workers_resume_and_crashes(self) -> None:
+        import tempfile
+        import threading
+
+        from benchmark.harness import run
+
+        made = []
+
+        class Slow:
+            name = "slow"
+
+            def __init__(self):
+                self.thread = None
+                made.append(self)
+
+            def answer(self, question):
+                assert self.thread in (None, threading.get_ident()), "a system instance was shared between threads"
+                self.thread = threading.get_ident()
+                if question["id"] == "Q3":
+                    raise RuntimeError("boom")
+                time.sleep(0.01)
+                return Prediction(id=question["id"], answer=[question["id"].lower()])
+
+        questions = [{"id": f"Q{i}", "plan": []} for i in range(1, 7)]
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder) / "run.jsonl"
+            predictions = run(Slow, questions, out, workers=3, quiet=True)
+            self.assertEqual(sorted(p.id for p in predictions), [q["id"] for q in questions])
+            self.assertEqual(len(made), 3)
+            crashed = next(p for p in predictions if p.id == "Q3")
+            self.assertEqual((crashed.error, crashed.plan_valid), ("system_error:RuntimeError", False))
+            lines = out.read_text().splitlines()
+            self.assertEqual(len(lines), 6)
+            out.write_text("\n".join(lines[:4]) + "\n")                       # as if the run had stopped after four
+            kept = {json.loads(line)["id"] for line in lines[:4]}
+            resumed = run(Slow, questions, out, workers=1, quiet=True, resume=True)
+            self.assertEqual(sorted(p.id for p in resumed), sorted(set(q["id"] for q in questions) - kept))
+            self.assertEqual(len(out.read_text().splitlines()), 6)
+            again = run(Slow, questions, out, quiet=True, resume=True)
+            self.assertEqual(again, [])
 
 
 class ScoreTests(unittest.TestCase):
