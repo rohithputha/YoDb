@@ -38,7 +38,7 @@ class RawStores:
         self.embedder = embedder
         self.connection = psycopg.connect(dsn, autocommit=True, options="-c default_transaction_read_only=on")
         with self.connection.cursor() as cursor:
-            cursor.execute("SET statement_timeout = %s", (str(int(statement_timeout_seconds * 1000)),))
+            cursor.execute("SELECT set_config('statement_timeout', %s, false)", (str(int(statement_timeout_seconds * 1000)),))
             try:
                 cursor.execute("LOAD 'age'")
             except psycopg.Error:

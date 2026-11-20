@@ -226,7 +226,7 @@ def load_questions(path: Path, *, split: str | None = None, classes: set[str] | 
     return questions
 
 
-def run(system: System, questions: Sequence[Mapping[str, Any]], out: Path, *, repeat: int = 1, warm_up: bool = False, quiet: bool = False) -> list[Prediction]:
+def run(system: System, questions: Sequence[Mapping[str, Any]], out: Path, *, repeat: int = 1, warm_up: bool = False, quiet: bool = False, verbose: bool = False) -> list[Prediction]:
     predictions: list[Prediction] = []
     if warm_up and questions:
         system.answer(questions[0])
@@ -241,8 +241,17 @@ def run(system: System, questions: Sequence[Mapping[str, Any]], out: Path, *, re
                 handle.flush()
             if not quiet:
                 last = predictions[-1]
-                outcome = f"error={last.error}" if last.error else f"{len(last.answer)} answers"
-                print(f"[{index}/{len(questions)}] {question['id']}: {outcome} in {last.latency_ms or 0:.0f} ms", flush=True)
+                outcome = f"error={last.error}" if last.error else (f"refused ({last.refusal_code})" if last.refused else f"{len(last.answer)} answers")
+                gold = question.get("gold_answer")
+                expected = f", gold {len(gold)}" if gold is not None and question.get("expect_error") is None else (f", expects {question['expect_error']}" if question.get("expect_error") else "")
+                print(f"[{index}/{len(questions)}] {question['id']}: {outcome}{expected} in {last.latency_ms or 0:.0f} ms"
+                      + (f", {last.repairs} repair(s)" if last.repairs else ""), flush=True)
+                if verbose:
+                    print(f"    question: {question['question']}")
+                    for step in last.plan:
+                        print(f"    plan: {json.dumps(step, ensure_ascii=False)}")
+                    if last.answer:
+                        print(f"    answer: {last.answer[:5]}{' ...' if len(last.answer) > 5 else ''}")
     return predictions
 
 
@@ -263,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--sequential", action="store_true", help="forced-sequential execution (joins probe by keys, one read at a time): the RQ2 ablation")
     parser.add_argument("-q", "--quiet", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true", help="print each question, the plan the system ran and the first answers")
     planner_options = parser.add_argument_group("planner", "options of the natural-language planner")
     planner_options.add_argument("--model", default=os.environ.get("YODB_LLM_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"), help="the model (default: $YODB_LLM_MODEL)")
     planner_options.add_argument("--endpoint", default=os.environ.get("YODB_LLM_ENDPOINT") or None, help="an OpenAI-compatible chat endpoint (vLLM, or a hosted API such as https://openai.rc.asu.edu/v1); without it the model runs in-process with transformers")
@@ -326,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
 
                     system = RouterSystem(stores, generator, grammar=not args.no_grammar)
             out = args.out or HERE / "runs" / f"{system.name}{'-sequential' if args.sequential else ''}.jsonl"
-        predictions = run(system, questions, out, repeat=args.repeat, warm_up=args.warm_up, quiet=args.quiet)
+        predictions = run(system, questions, out, repeat=args.repeat, warm_up=args.warm_up, quiet=args.quiet, verbose=args.verbose)
     print(f"wrote {len(predictions)} predictions to {out}")
     return 0
 
