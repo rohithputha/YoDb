@@ -133,7 +133,8 @@ def load_embeddings(connection, model_name: str, batch_size: int) -> None:
                              "change schema.sql (and the catalog's dimensions) to match the model")
         cursor.execute("CREATE TEMP TABLE review_vectors (review_id text PRIMARY KEY, embedding vector) ON COMMIT DROP")
         started = time.perf_counter()
-        done = 0
+        done, last_report = 0, started
+        log(f"  embedding {len(rows):,} review texts on this machine (a laptop CPU does roughly 20-60 per second)")
         with cursor.copy("COPY review_vectors (review_id, embedding) FROM STDIN") as copy:
             for start in range(0, len(rows), batch_size):
                 batch = rows[start:start + batch_size]
@@ -141,9 +142,12 @@ def load_embeddings(connection, model_name: str, batch_size: int) -> None:
                 for (review_id, _), vector in zip(batch, vectors):
                     copy.write_row((review_id, "[" + ",".join(repr(x) for x in vector) + "]"))
                 done += len(batch)
-                if done % (batch_size * 20) == 0 or done == len(rows):
-                    rate = done / max(time.perf_counter() - started, 1e-9)
-                    log(f"  embedded {done:,}/{len(rows):,} reviews ({rate:,.0f}/s)")
+                now = time.perf_counter()
+                if now - last_report >= 15 or done == len(rows):
+                    rate = done / max(now - started, 1e-9)
+                    remaining = (len(rows) - done) / rate if rate else 0
+                    log(f"  embedded {done:,}/{len(rows):,} reviews ({rate:,.0f}/s, about {remaining / 60:.0f} min left)")
+                    last_report = now
         cursor.execute("UPDATE yelp.review r SET text_embedding = v.embedding FROM review_vectors v WHERE v.review_id = r.review_id")
         log(f"  stored {cursor.rowcount:,} embeddings")
         connection.commit()                      # the vectors are safe before the index is attempted
