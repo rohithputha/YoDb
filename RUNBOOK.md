@@ -13,19 +13,25 @@ step is skipped once its result exists; the experiments continue from the predic
 ```bash
 git clone <repo> YoDb && cd YoDb
 cp .env.example .env      # put OPENAI_API_KEY and YELP_DATA (the folder with the yelp_academic_dataset_*.json files) in it
-scripts/run_all.sh --preset target --workers 8
+scripts/run_all.sh --preset target --workers 16
 ```
 
 It finds a container runtime itself: Docker or Podman on a laptop, Apptainer on an HPC node (no root
 needed; the server runs as you, its data under `$SCRATCH/yodb-pg`). `scripts/pg.sh up|status|psql|logs|down|destroy`
-manages that server afterwards. `--workers 8` answers eight questions at a time in the model-bound runs,
-which is what makes the sweep take about an hour instead of most of a day against the shared endpoint.
+manages that server afterwards. `--workers 16` answers sixteen questions at a time in the model-bound
+runs, which is what makes the sweep take about an hour instead of most of a day against the shared
+endpoint; the endpoint batches concurrent requests, and when it answers 429 the call waits and retries,
+so a higher number mostly adds waiting rather than failures (32 is a reasonable ceiling; each worker
+also holds one database connection). The embedding step commits every 2,000 reviews and resumes where
+it stopped, and uses a GPU when the node has one (`nvidia-smi`; `YODB_EMBED_DEVICE=cpu` to refuse it).
 
 ### On ASU Sol
 
 ```bash
-# 1. a compute session: 16 cores and 64 GB for the embeddings; 12 hours covers the target preset comfortably
-interactive -p public -q public -c 16 --mem=64G -t 0-12:00      # -p htc also works but is capped at 4 hours
+# 1. a compute session with one A100: the review embeddings then take minutes instead of ~90 min on 16 CPU cores
+#    (`interactive` wraps salloc; the plain salloc form is the same flags followed by `srun --pty bash`)
+interactive -p public -q public -c 16 --mem=64G --gres=gpu:a100:1 -t 0-12:00
+#    without a GPU: interactive -p public -q public -c 16 --mem=64G -t 0-12:00   (-p htc also works, capped at 4 hours)
 
 # 2. Python >= 3.11 (Sol's default python is older): one of
 module load mamba/latest && mamba create -n yodb python=3.12 -y && source activate yodb
@@ -38,7 +44,7 @@ module load mamba/latest && mamba create -n yodb python=3.12 -y && source activa
 #    /scratch/<asurite>/yodb-pg/yodb-age.tar) and set YODB_PG_IMAGE_TAR to that path in .env
 
 # 5.
-scripts/run_all.sh --preset target --workers 8
+scripts/run_all.sh --preset target --workers 16
 ```
 
 Keep the session open while it runs (`tmux` on the login node before `interactive` survives a dropped

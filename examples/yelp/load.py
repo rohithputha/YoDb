@@ -126,40 +126,50 @@ def load_tables(connection, sample: Sample) -> None:
 # --- embeddings --------------------------------------------------------------------------------------
 
 
-def load_embeddings(connection, model_name: str, batch_size: int, threads: int | None = None) -> None:
+def load_embeddings(connection, model_name: str, batch_size: int, threads: int | None = None, commit_every: int = 2_000) -> None:
+    """Embed the reviews that have no vector yet, committing every ``commit_every`` rows: an interrupted run resumes."""
+
     from yodb.embeddings import FastEmbedProvider
 
     provider = FastEmbedProvider(model_name, threads=threads)
-    log(f"  embedding model {provider.info.model}: {provider.dimensions} dimensions")
+    log(f"  embedding model {provider.info.model}: {provider.dimensions} dimensions, on the {provider.device}")
     with connection.cursor() as cursor:
-        cursor.execute("SELECT review_id, text FROM yelp.review WHERE text IS NOT NULL AND btrim(text) <> '' ORDER BY review_id")
-        rows = cursor.fetchall()
         dimensions = provider.dimensions
         cursor.execute("SELECT atttypmod FROM pg_attribute WHERE attrelid = 'yelp.review'::regclass AND attname = 'text_embedding'")
         declared = cursor.fetchone()[0]
         if declared is not None and declared > 0 and declared != dimensions:
             raise SystemExit(f"yelp.review.text_embedding is vector({declared}) but the model has {dimensions} dimensions; "
                              "change schema.sql (and the catalog's dimensions) to match the model")
-        cursor.execute("CREATE TEMP TABLE review_vectors (review_id text PRIMARY KEY, embedding vector) ON COMMIT DROP")
+        cursor.execute("SELECT count(*) FROM yelp.review WHERE text_embedding IS NOT NULL")
+        already = cursor.fetchone()[0]
+        cursor.execute("SELECT review_id, text FROM yelp.review WHERE text IS NOT NULL AND btrim(text) <> '' AND text_embedding IS NULL ORDER BY review_id")
+        rows = cursor.fetchall()
+        if already:
+            log(f"  {already:,} reviews already embedded; {len(rows):,} to go")
+        cursor.execute("CREATE TEMP TABLE IF NOT EXISTS review_vectors (review_id text PRIMARY KEY, embedding vector)")
+        connection.commit()
         started = time.perf_counter()
         done, last_report = 0, started
-        log(f"  embedding {len(rows):,} review texts on this machine (a laptop CPU does roughly 20-60 per second)")
-        with cursor.copy("COPY review_vectors (review_id, embedding) FROM STDIN") as copy:
-            for start in range(0, len(rows), batch_size):
-                batch = rows[start:start + batch_size]
-                vectors = provider.embed_texts([text for _, text in batch], batch_size=batch_size)
-                for (review_id, _), vector in zip(batch, vectors):
-                    copy.write_row((review_id, "[" + ",".join(repr(x) for x in vector) + "]"))
-                done += len(batch)
-                now = time.perf_counter()
-                if now - last_report >= 15 or done == len(rows):
-                    rate = done / max(now - started, 1e-9)
-                    remaining = (len(rows) - done) / rate if rate else 0
-                    log(f"  embedded {done:,}/{len(rows):,} reviews ({rate:,.0f}/s, about {remaining / 60:.0f} min left)")
-                    last_report = now
-        cursor.execute("UPDATE yelp.review r SET text_embedding = v.embedding FROM review_vectors v WHERE v.review_id = r.review_id")
-        log(f"  stored {cursor.rowcount:,} embeddings")
-        connection.commit()                      # the vectors are safe before the index is attempted
+        log(f"  embedding {len(rows):,} review texts on this machine (a laptop CPU does roughly 20-60 per second; a GPU thousands)")
+        for chunk_start in range(0, len(rows), commit_every):
+            chunk = rows[chunk_start:chunk_start + commit_every]
+            with cursor.copy("COPY review_vectors (review_id, embedding) FROM STDIN") as copy:
+                for start in range(0, len(chunk), batch_size):
+                    batch = chunk[start:start + batch_size]
+                    vectors = provider.embed_texts([text for _, text in batch], batch_size=batch_size)
+                    for (review_id, _), vector in zip(batch, vectors):
+                        copy.write_row((review_id, "[" + ",".join(repr(x) for x in vector) + "]"))
+            cursor.execute("UPDATE yelp.review r SET text_embedding = v.embedding FROM review_vectors v WHERE v.review_id = r.review_id")
+            cursor.execute("TRUNCATE review_vectors")
+            connection.commit()                      # this chunk is safe; a rerun continues after it
+            done += len(chunk)
+            now = time.perf_counter()
+            if now - last_report >= 15 or done == len(rows):
+                rate = done / max(now - started, 1e-9)
+                remaining = (len(rows) - done) / rate if rate else 0
+                log(f"  embedded {done:,}/{len(rows):,} reviews ({rate:,.0f}/s, about {remaining / 60:.0f} min left)")
+                last_report = now
+        log(f"  stored {done:,} embeddings ({already + done:,} in all)")
         cursor.execute("DROP INDEX IF EXISTS yelp.review_embedding_hnsw")
         try:
             cursor.execute("CREATE INDEX review_embedding_hnsw ON yelp.review USING hnsw (text_embedding vector_cosine_ops)")

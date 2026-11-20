@@ -15,11 +15,40 @@ search rather than compare vectors from different spaces.  Needs the optional
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
+import os
 import time
+from typing import Any
 
 from .semantic.contracts import EmbeddingRequest, EmbeddingResult, ProviderCost, ProviderInfo
 
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
+
+
+def cuda_available() -> bool:
+    """Whether the installed onnxruntime can run on a CUDA GPU (``onnxruntime-gpu`` with its libraries found)."""
+
+    try:
+        import onnxruntime
+    except ImportError:
+        return False
+    if hasattr(onnxruntime, "preload_dlls"):
+        try:
+            onnxruntime.preload_dlls()                       # finds the pip-installed CUDA/cuDNN libraries (onnxruntime >= 1.21)
+        except Exception:
+            pass
+    return "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+
+
+def _choose_device(device: str) -> str:
+    device = device.lower()
+    if device not in ("cpu", "cuda", "auto"):
+        raise ValueError(f"embedding device must be cpu, cuda or auto, not {device!r}")
+    if device == "cpu":
+        return "cpu"
+    available = cuda_available()
+    if device == "cuda" and not available:
+        raise RuntimeError("YODB_EMBED_DEVICE=cuda but onnxruntime has no CUDA provider: pip install fastembed-gpu (and the CUDA 12 libraries)")
+    return "cuda" if available else "cpu"
 
 
 class FastEmbedProvider:
@@ -32,12 +61,25 @@ class FastEmbedProvider:
         cache_dir: str | None = None,
         threads: int | None = None,
         version: str = "1",
+        device: str | None = None,
     ) -> None:
+        """``device``: "cpu", "cuda", or "auto" (a GPU when ``onnxruntime-gpu`` sees one, the CPU otherwise); the
+        default is ``$YODB_EMBED_DEVICE`` or "auto".  A GPU needs ``pip install fastembed-gpu`` (onnxruntime-gpu)."""
+
         try:
             from fastembed import TextEmbedding
         except ImportError as error:
             raise RuntimeError('the embedding provider needs the "fastembed" package: pip install "yodb[semantic]"') from error
-        self._model = TextEmbedding(model_name, cache_dir=cache_dir, threads=threads)
+        self.device = _choose_device(device or os.environ.get("YODB_EMBED_DEVICE") or "auto")
+        options: dict[str, Any] = {"cache_dir": cache_dir, "threads": threads}
+        if self.device == "cuda":
+            options["providers"] = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        try:
+            self._model = TextEmbedding(model_name, **options)
+        except TypeError:                                     # an older fastembed without ``providers``
+            options.pop("providers", None)
+            self.device = "cpu"
+            self._model = TextEmbedding(model_name, **options)
         probe = next(iter(self._model.embed(["probe"])))
         self.dimensions = len(probe)
         self.info = ProviderInfo("fastembed", model_name, version)

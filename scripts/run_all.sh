@@ -10,8 +10,10 @@
 # Apptainer -> the engine's end-to-end check against the real extensions -> the Yelp load (sample, tables, embeddings,
 # graph) -> the questions and the oracle check -> E2, E1, E3 and the ablations -> benchmark/results/results.md.
 #
-# The model is the endpoint in .env (YODB_LLM_ENDPOINT / YODB_LLM_MODEL / OPENAI_API_KEY); nothing runs on a GPU here.
-# --workers is how many questions the model-bound runs answer at a time (8 is a good number for a vLLM endpoint).
+# The model is the endpoint in .env (YODB_LLM_ENDPOINT / YODB_LLM_MODEL / OPENAI_API_KEY).  A GPU, when the node has one
+# (nvidia-smi), is used for the review embeddings (minutes instead of an hour and a half); nothing else needs it.
+# --workers is how many questions the model-bound runs answer at a time (16 by default; a vLLM endpoint batches them,
+# and a 429 from it is retried with a pause, so more workers mostly means more waiting rather than failures).
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +21,7 @@ ROOT="$(cd "$HERE/.." && pwd)"
 cd "$ROOT"
 
 PRESET=target
-WORKERS=8
+WORKERS=16
 SKIP_TESTS=0
 SKIP_E2E=0
 ONLY=all
@@ -133,17 +135,44 @@ fi
 loaded() {
     scripts/pg.sh psql -tA -c "SELECT count(*) FROM yelp.review WHERE text_embedding IS NOT NULL" 2>/dev/null | tr -d '[:space:]'
 }
-if ! done_step "load-$PRESET"; then
-    log "Yelp load, preset $PRESET (sample, tables, embeddings on $YODB_EMBED_THREADS threads, graph)"
+if done_step "load-$PRESET"; then                      # a load completed by an earlier version of this script (one step)
+    mark "load-$PRESET-tables"; mark "load-$PRESET-embeddings"; mark "load-$PRESET-graph"
+fi
+if ! done_step "load-$PRESET-tables"; then
+    log "Yelp load, preset $PRESET: sample and tables"
     if [ -z "${YELP_DATA:-}" ] || [ ! -f "$YELP_DATA/yelp_academic_dataset_business.json" ]; then
         if [ -z "${YELP_DATASET_URL:-}" ]; then
             echo "run_all.sh: YELP_DATA in .env must point at the folder with yelp_academic_dataset_*.json (or set YELP_DATASET_URL to the download link from https://business.yelp.com/data/resources/open-dataset/)." >&2
             exit 1
         fi
     fi
-    python examples/yelp/load.py --schema --preset "$PRESET" --threads "$YODB_EMBED_THREADS"
+    python examples/yelp/load.py --schema --preset "$PRESET" tables
     rm -f "$STATE"/load-* "$STATE"/questions "$STATE"/gold
-    mark "load-$PRESET"
+    mark "load-$PRESET-tables"
+fi
+if ! done_step "load-$PRESET-embeddings"; then
+    # A GPU does this step in minutes: onnxruntime-gpu through fastembed-gpu, with the CUDA 12 libraries from pip.
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 && [ "${YODB_EMBED_DEVICE:-auto}" != cpu ]; then
+        if ! python -c 'from yodb.embeddings import cuda_available; import sys; sys.exit(0 if cuda_available() else 1)' 2>/dev/null; then
+            log "a GPU is attached: installing onnxruntime-gpu for the embeddings"
+            pip install -q fastembed-gpu nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cuda-nvrtc-cu12 || true
+        fi
+        if python -c 'from yodb.embeddings import cuda_available; import sys; sys.exit(0 if cuda_available() else 1)'; then
+            export YODB_EMBED_DEVICE=cuda
+            echo "embeddings on the GPU: $(nvidia-smi -L | head -1)"
+        else
+            echo "run_all.sh: a GPU is attached but onnxruntime cannot use it (CUDA libraries not found); embedding on the CPU instead" >&2
+            export YODB_EMBED_DEVICE=cpu
+        fi
+    fi
+    log "Yelp load, preset $PRESET: embeddings (resumes where it stopped; $YODB_EMBED_THREADS CPU threads, device ${YODB_EMBED_DEVICE:-auto})"
+    python examples/yelp/load.py --preset "$PRESET" --threads "$YODB_EMBED_THREADS" embeddings
+    mark "load-$PRESET-embeddings"
+fi
+if ! done_step "load-$PRESET-graph"; then
+    log "Yelp load, preset $PRESET: the AGE graph"
+    python examples/yelp/load.py --preset "$PRESET" graph
+    mark "load-$PRESET-graph"
 fi
 echo "reviews with embeddings: $(loaded)"
 yodb validate examples/yelp/catalog
