@@ -266,3 +266,22 @@ class ScoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CollationTests(unittest.TestCase):
+    """The oracles order text in code-point order, as YoDb does, so a truncated result agrees."""
+
+    def test_every_text_order_term_is_collated_and_distinct_is_gone(self) -> None:
+        from benchmark.templates import collated
+
+        for template in TEMPLATES:
+            if not template.oracle:
+                continue
+            self.assertNotIn("DISTINCT", template.oracle, template.id)
+            for clause in template.oracle.split("ORDER BY")[1:]:
+                clause = clause.split(" LIMIT")[0]
+                for term in clause.split(","):
+                    column = term.strip().split()[0]
+                    if any(column.endswith("." + name) for name in ("review_id", "business_id", "user_id", "friend_id", "category_id", "name", "id")):
+                        self.assertIn('COLLATE "C"', term, (template.id, term))
+        self.assertEqual(collated("SELECT 1 ORDER BY n.d, n.id, c.customer_id LIMIT 5"), 'SELECT 1 ORDER BY n.d, n.id COLLATE "C", c.customer_id LIMIT 5')

@@ -84,8 +84,9 @@ re-makes the tables from the runs on disk.
 ## Notes
 
 - Every gold query asks for the largest page (500) with a deterministic order, and the oracle
-  takes the same `LIMIT` in the same order, so the two agree even when a question has more than
-  500 answers.
+  takes the same `LIMIT` in the same order — with `COLLATE "C"` on text columns, because YoDb
+  orders ties by code point while a database collation such as `en_US` does not — so the two
+  agree even when a question has more than 500 answers.
 - The answer set is the distinct values of one row field (`id`, or `alias.id` for the traversed
   side); evidence is every record ID that appeared in any step's rows, by dataset.
 - A second step carries at most 1,000 IDs (YoDb's `in` limit); the gold plans stay well under it.

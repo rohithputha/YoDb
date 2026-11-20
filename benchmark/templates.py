@@ -25,6 +25,7 @@ the distinct values of that field in the first step's rows.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Any
 
 PAGE = 500          # every gold query asks for the largest page; the oracle takes the same LIMIT in the same order
@@ -259,7 +260,7 @@ TEMPLATES: tuple[Template, ...] = (
         plan=(q("user", ["name"], p("id", "eq", "{user_id}"), step("user_reviewed_business", "business", ["name", "stars"], p("stars", "gte", "{stars_hi}")),
                order_by=[("business.name", "asc")]),),
         sources=(GRAPH, RELATIONAL), answer="business.id", answer_dataset="business",
-        oracle=f"SELECT DISTINCT b.business_id AS answer_id, r.user_id AS evidence_user FROM yelp.review r JOIN yelp.business b ON b.business_id = r.business_id "
+        oracle=f"SELECT b.business_id AS answer_id, r.user_id AS evidence_user FROM yelp.review r JOIN yelp.business b ON b.business_id = r.business_id "
                f"WHERE r.user_id = %(user_id)s AND b.stars >= %(stars_hi)s ORDER BY b.business_id LIMIT {PAGE}",
     ),
     Template(
@@ -268,7 +269,7 @@ TEMPLATES: tuple[Template, ...] = (
         plan=(q("business", ["name"], {"all": [p("name", "eq", "{business_name}"), p("city", "eq", "{business_city}")]},
                step("user_reviewed_business", "reviewer", ["name", "fans"], p("fans", "gte", "{fans_min}"), direction="reverse"), order_by=[("reviewer.fans", "desc")]),),
         sources=(GRAPH, RELATIONAL), answer="reviewer.id", answer_dataset="user",
-        oracle=f"SELECT DISTINCT u.user_id AS answer_id, b.business_id AS evidence_business FROM yelp.business b JOIN yelp.review r ON r.business_id = b.business_id "
+        oracle=f"SELECT u.user_id AS answer_id, b.business_id AS evidence_business FROM yelp.business b JOIN yelp.review r ON r.business_id = b.business_id "
                f"JOIN yelp.users u ON u.user_id = r.user_id WHERE b.name = %(business_name)s AND b.city = %(business_city)s AND u.fans >= %(fans_min)s "
                f"ORDER BY u.user_id, b.business_id LIMIT {PAGE}",
     ),
@@ -298,7 +299,7 @@ TEMPLATES: tuple[Template, ...] = (
         plan=(q("user", ["name"], p("id", "eq", "{user_id}"), step("user_reviewed_business", "business", ["name"])),
               q("business", ["name"], p("id", "in", ids_from(0, "business.id")), step("business_in_category", "category", ["name"]), order_by=[("category.name", "asc")])),
         sources=(GRAPH, RELATIONAL), answer="category.id", answer_dataset="category",
-        oracle=f"SELECT DISTINCT bc.category_id AS answer_id, r.business_id AS evidence_business FROM yelp.review r JOIN yelp.business_category bc ON bc.business_id = r.business_id "
+        oracle=f"SELECT bc.category_id AS answer_id, r.business_id AS evidence_business FROM yelp.review r JOIN yelp.business_category bc ON bc.business_id = r.business_id "
                f"WHERE r.user_id = %(user_id)s ORDER BY bc.category_id, r.business_id LIMIT {PAGE}",
         notes="two steps: the businesses reached over REVIEWED, then their categories over IN_CATEGORY",
     ),
@@ -309,7 +310,7 @@ TEMPLATES: tuple[Template, ...] = (
               q("category", ["name"], p("id", "in", ids_from(0, "category.id")),
                 step("business_in_category", "business", ["name", "stars"], p("city", "eq", "{city}"), direction="reverse"), order_by=[("business.name", "asc")])),
         sources=(GRAPH, RELATIONAL), answer="business.id", answer_dataset="business",
-        oracle=f"SELECT DISTINCT b2.business_id AS answer_id, bc1.category_id AS evidence_category FROM yelp.business b1 "
+        oracle=f"SELECT b2.business_id AS answer_id, bc1.category_id AS evidence_category FROM yelp.business b1 "
                f"JOIN yelp.business_category bc1 ON bc1.business_id = b1.business_id JOIN yelp.business_category bc2 ON bc2.category_id = bc1.category_id "
                f"JOIN yelp.business b2 ON b2.business_id = bc2.business_id WHERE b1.name = %(business_name)s AND b1.city = %(business_city)s AND b2.city = %(city)s "
                f"ORDER BY b2.business_id, bc1.category_id LIMIT {PAGE}",
@@ -322,7 +323,7 @@ TEMPLATES: tuple[Template, ...] = (
               q("user", ["name"], p("id", "in", ids_from(0, "friend.id")), step("user_reviewed_business", "business", ["name", "stars"], p("stars", "gte", "{stars_hi}")),
                 order_by=[("business.name", "asc")])),
         sources=(GRAPH, RELATIONAL), answer="business.id", answer_dataset="business",
-        oracle=f"SELECT DISTINCT b.business_id AS answer_id, f.friend_id AS evidence_user FROM yelp.friendship f JOIN yelp.review r ON r.user_id = f.friend_id "
+        oracle=f"SELECT b.business_id AS answer_id, f.friend_id AS evidence_user FROM yelp.friendship f JOIN yelp.review r ON r.user_id = f.friend_id "
                f"JOIN yelp.business b ON b.business_id = r.business_id WHERE f.user_id = %(user_id)s AND b.stars >= %(stars_hi)s ORDER BY b.business_id, f.friend_id LIMIT {PAGE}",
         notes="two steps over the user vertices (user -> friends -> businesses)",
     ),
@@ -370,6 +371,42 @@ TEMPLATES: tuple[Template, ...] = (
         expect_error="relationship_not_applicable", notes="the relationship exists but does not end at a user",
     ),
 )
+
+
+_TEXT_COLUMNS = ("review_id", "business_id", "user_id", "friend_id", "category_id", "name", "id")
+_ORDER_BY = re.compile(r"ORDER BY (.+?)(?=\s+LIMIT\b|$)", re.DOTALL)
+
+
+def collated(sql: str) -> str:
+    """The oracle's ORDER BY with ``COLLATE "C"`` on every text column.
+
+    YoDb orders ties by code point (Python's string order); a database collation such as ``en_US``
+    orders text differently, and the two would pick a different first 500 rows of a large result.
+    The "C" collation is byte order, which for these UTF-8 strings is code-point order.
+    """
+
+    def fix_clause(match: re.Match) -> str:
+        terms = []
+        for term in match.group(1).split(","):
+            term = term.strip()
+            parts = term.split()
+            column = parts[0]
+            if "COLLATE" not in term and any(column.endswith("." + name) or column == name for name in _TEXT_COLUMNS):
+                term = " ".join([column + ' COLLATE "C"', *parts[1:]])
+            terms.append(term)
+        return "ORDER BY " + ", ".join(terms)
+
+    return _ORDER_BY.sub(fix_clause, sql)
+
+
+def _collate_all() -> None:
+    global TEMPLATES
+    TEMPLATES = tuple(
+        Template(**{**t.__dict__, "oracle": collated(t.oracle)}) if t.oracle else t for t in TEMPLATES
+    )
+
+
+_collate_all()
 
 
 def by_class() -> dict[str, int]:
