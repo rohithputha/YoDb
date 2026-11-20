@@ -191,7 +191,7 @@ def load_graph(connection, batch_size: int) -> None:
             for start in range(0, len(pairs), batch_size):
                 cypher(
                     cursor,
-                    f"UNWIND $rows AS r MATCH (a:{from_label} {{id: r.a}}), (b:{to_label} {{id: r.b}}) CREATE (a)-[:{edge}]->(b)",
+                    f"UNWIND $rows AS r MATCH (a:{from_label}), (b:{to_label}) WHERE a.id = r.a AND b.id = r.b CREATE (a)-[:{edge}]->(b)",
                     [{"a": a, "b": b} for a, b in pairs[start:start + batch_size]],
                 )
             log(f"  {edge}: {len(pairs):,} edges")
