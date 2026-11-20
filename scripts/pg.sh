@@ -10,7 +10,8 @@
 #     scripts/pg.sh destroy   # stop it and delete the data
 #
 # Settings (environment, or .env): YODB_PG_PORT (55434), YODB_PG_PASSWORD (postgres), YODB_PG_DB (yelp),
-# YODB_PG_HOME (where Apptainer keeps the data and the image: $SCRATCH/yodb-pg or ~/yodb-pg),
+# YODB_PG_HOME (where Apptainer keeps the data and the image: $SCRATCH/yodb-pg or ~/yodb-pg), YODB_PG_RUN (the socket
+# directory, on a local filesystem: $TMPDIR/yodb-pg-<you>/run),
 # YODB_PG_RUNTIME (docker|podman|apptainer, else detected), YODB_PG_IMAGE_TAR (a `docker save` archive
 # to build the Apptainer image from when --fakeroot builds are not allowed).
 
@@ -75,7 +76,9 @@ docker_up() {
 
 SIF="$HOME_DIR/yodb-age.sif"
 PGDATA_DIR="$HOME_DIR/data"
-PGRUN_DIR="$HOME_DIR/run"
+# The socket directory must be on a local filesystem: a parallel filesystem (scratch) cannot set permissions on a
+# Unix socket ("Operation not supported"), and Postgres refuses to start without one.
+PGRUN_DIR="${YODB_PG_RUN:-${TMPDIR:-/tmp}/yodb-pg-$(id -un)/run}"
 PIDFILE="$HOME_DIR/postgres.pid"
 LOGFILE="$HOME_DIR/postgres.log"
 
