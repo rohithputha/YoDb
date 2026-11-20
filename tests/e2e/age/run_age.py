@@ -19,6 +19,7 @@ import psycopg
 
 import yodb
 from yodb.errors import YoDbError
+from yodb.planning import JoinPolicy
 from yodb.semantic import EmbeddingResult, ProviderInfo
 
 HERE = Path(__file__).parent
@@ -170,12 +171,21 @@ def main(argv: list[str]) -> int:
     cases = [c for c in CASES if not wanted or any(w in c.name for w in wanted)]
     failed = 0
     started = time.perf_counter()
+    # every case runs twice: with the planner's own join strategy, and with every filtered join read in parallel
+    for strategy, policy in (("auto", JoinPolicy()), ("parallel", JoinPolicy(parallel="always"))):
+        failed += run_cases(cases, strategy, policy, quiet)
+    print(f"\n{2 * len(cases) - failed}/{2 * len(cases)} passed in {time.perf_counter() - started:.1f}s")
+    return 1 if failed else 0
+
+
+def run_cases(cases, strategy: str, policy, quiet: bool) -> int:
+    failed = 0
     with psycopg.connect(CONNINFO, autocommit=True) as oracle, yodb.connect(
-        HERE / "catalog", {"e2e-shop": CONNINFO}, embedder=ToyEmbedder()
+        HERE / "catalog", {"e2e-shop": CONNINFO}, embedder=ToyEmbedder(), join_policy=policy
     ) as db:
-        print(f"catalog: {db.status()['sources']}   similar fields: {db.similar_fields()}")
+        print(f"\n##### join strategy {strategy}: catalog {db.status()['sources']}   similar fields: {db.similar_fields()}")
         for case in cases:
-            print(f"\n=== {case.name}")
+            print(f"\n=== {case.name} [{strategy}]")
             try:
                 explanation = db.explain(case.query)
                 if not quiet:
@@ -214,8 +224,7 @@ def main(argv: list[str]) -> int:
                 print("  FAIL " + "\n  FAIL ".join(problems))
             else:
                 print(f"  PASS ({len(got)} rows)")
-    print(f"\n{len(cases) - failed}/{len(cases)} passed in {time.perf_counter() - started:.1f}s")
-    return 1 if failed else 0
+    return failed
 
 
 if __name__ == "__main__":

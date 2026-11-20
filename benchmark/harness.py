@@ -277,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     questions = load_questions(args.questions, split=args.split, classes=set(args.classes) if args.classes else None, only=args.only)
     out = args.out or HERE / "runs" / f"{args.system}{'-sequential' if args.sequential else ''}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
-    needs_embedder = args.system == "planner" or any("similar" in json.dumps(q["plan"]) for q in questions)
+    needs_embedder = args.system != "gold" or any("similar" in json.dumps(q["plan"]) for q in questions)
     embedder = FastEmbedProvider(args.embedding_model) if needs_embedder else None
     from yodb.execution.operators import FederatedExecutionPolicy
     from yodb.planning import JoinPolicy
