@@ -24,6 +24,18 @@ from .semantic.contracts import EmbeddingRequest, EmbeddingResult, ProviderCost,
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 
 
+def default_threads() -> int:
+    """``$YODB_EMBED_THREADS``, else the CPUs this process may run on (the job's share, not the machine's)."""
+
+    configured = os.environ.get("YODB_EMBED_THREADS")
+    if configured and configured.isdigit() and int(configured) > 0:
+        return int(configured)
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):
+        return max(1, os.cpu_count() or 1)
+
+
 def cuda_available() -> bool:
     """Whether the installed onnxruntime can run on a CUDA GPU (``onnxruntime-gpu`` with its libraries found)."""
 
@@ -71,7 +83,9 @@ class FastEmbedProvider:
         except ImportError as error:
             raise RuntimeError('the embedding provider needs the "fastembed" package: pip install "yodb[semantic]"') from error
         self.device = _choose_device(device or os.environ.get("YODB_EMBED_DEVICE") or "auto")
-        options: dict[str, Any] = {"cache_dir": cache_dir, "threads": threads}
+        # Always an explicit thread count: left to itself onnxruntime starts one thread per CPU of the machine and pins
+        # each to a core, which fails loudly for every core a job scheduler (Slurm) has not given this process.
+        options: dict[str, Any] = {"cache_dir": cache_dir, "threads": threads or default_threads()}
         if self.device == "cuda":
             options["providers"] = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         try:
