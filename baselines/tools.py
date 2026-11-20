@@ -15,7 +15,7 @@ import time
 from typing import Any
 
 MAXIMUM_ROWS = 500
-MAXIMUM_CELL = 300            # characters of one value shown to the model
+MAXIMUM_CELL = 120            # characters of one value shown to the model (ids and short fields fit whole)
 _FORBIDDEN = re.compile(r"^\s*(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|vacuum|call|do)\b", re.IGNORECASE)
 
 
@@ -132,7 +132,7 @@ class RawStores:
         self.connection.close()
 
 
-def render_rows(rows: list[dict[str, Any]], limit: int = 60) -> str:
+def render_rows(rows: list[dict[str, Any]], limit: int = MAXIMUM_ROWS) -> str:
     """Rows as JSON lines the model can read; long values are cut, many rows are summarized."""
 
     if not rows:

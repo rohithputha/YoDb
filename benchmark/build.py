@@ -229,13 +229,32 @@ def with_gold(record: dict[str, Any], template: Template, connection, embedder=N
     return {**record, "gold_answer": list(answers), "gold_evidence": {dataset: list(ids) for dataset, ids in evidence.items()}}
 
 
+OVERSAMPLE = 3     # candidate instances drawn per template, so ones with an empty gold answer can be passed over
+
+
 def build(connection, *, seed: str = DEFAULT_SEED, embedder=None, templates=TEMPLATES, pools=None) -> list[dict[str, Any]]:
+    """Instantiate every template; an instance whose gold answer is empty is passed over while a later
+    candidate has answers (an empty answer is valid, but an informative question is better)."""
+
     pools = read_pools(connection) if pools is None else pools
     questions = []
     for template in templates:
-        for index, params in enumerate(instances_of(template, pools, seed), start=1):
-            record = instantiate(template, index, params, seed)
-            questions.append(with_gold(record, template, connection, embedder))
+        wanted = template.instances
+        candidates = instances_of(Template(**{**template.__dict__, "instances": wanted * OVERSAMPLE}), pools, seed)
+        kept: list[dict[str, Any]] = []
+        spare: list[dict[str, Any]] = []
+        for params in candidates:
+            if len(kept) >= wanted:
+                break
+            record = with_gold(instantiate(template, 0, params, seed), template, connection, embedder)
+            if template.expect_error is not None or record["gold_answer"]:
+                kept.append(record)
+            else:
+                spare.append(record)
+        kept.extend(spare[: wanted - len(kept)])
+        for index, record in enumerate(kept, start=1):
+            question_id = f"{template.id}-{index:03d}"
+            questions.append({**record, "id": question_id, "split": split_of(question_id, seed)})
     return questions
 
 

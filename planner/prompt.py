@@ -15,10 +15,11 @@ invent a name; never write SQL. If the question cannot be answered from this cat
 language (it asks for a count, a total, a write, or names data that is not there), or it is too
 ambiguous to pick a dataset and a condition, answer with a refusal instead of guessing.
 
-OUTPUT: exactly one JSON object, no prose, no code fence:
-  {"plan": [<query>, ...], "answer_field": "<field>", "sources": [<kind>, ...]}
-or
-  {"refuse": {"code": "unsupported" | "ambiguous" | "not_a_read" | "no_such_data" | "other", "reason": "<one sentence>"}}
+OUTPUT: exactly one JSON object with these four keys, no prose, no code fence:
+  {"plan": [<query>, ...], "answer_field": "<field>", "sources": [<kind>, ...], "refuse": {"code": "none", "reason": ""}}
+or, to refuse,
+  {"plan": [], "answer_field": "", "sources": [],
+   "refuse": {"code": "unsupported" | "ambiguous" | "not_a_read" | "no_such_data" | "other", "reason": "<one sentence>"}}
 
 - "plan" has one query, or two when the question needs a second relationship: the second query may
   take the IDs reached by the first with {"$ids": {"step": 0, "field": "<alias>.id"}} as the value of an
@@ -27,8 +28,9 @@ or
   "<alias>.id" for the traversed dataset of the last query.
 - "sources" lists the kinds of source the plan uses: "relational" always; "vector" when a query has a
   "similar" condition; "graph" when a traverse step follows a relationship stored as graph edges.
-- Ask for the largest page ({"page": {"first": 500}}) and give a deterministic "order_by" unless the
-  question asks for the nearest rows (then no "order_by").
+- Ask for the largest page ({"page": {"first": 500}}). When the question says in what order to list the
+  rows, put exactly that in "order_by" (it decides which rows make the page when there are more than 500);
+  otherwise order by a sensible field, and give no "order_by" when the question asks for the nearest rows.
 - Prefer a rule from the catalog when it says exactly what the question asks.
 
 QUERY LANGUAGE
@@ -49,7 +51,7 @@ EXAMPLES: tuple[tuple[str, dict[str, Any]], ...] = (
         {"plan": [{"from": {"dataset": "business"}, "select": ["name", "stars"],
                    "where": {"all": [{"field": "city", "op": "eq", "value": "Tucson"}, {"rule": "open_now"}, {"field": "stars", "op": "gte", "value": 4.5}]},
                    "order_by": [{"field": "name", "direction": "asc"}], "page": {"first": 500}}],
-         "answer_field": "id", "sources": ["relational"]},
+         "answer_field": "id", "sources": ["relational"], "refuse": {"code": "none", "reason": ""}},
     ),
     (
         "Which categories are the businesses reviewed by the user with id abc listed under?",
@@ -59,11 +61,12 @@ EXAMPLES: tuple[tuple[str, dict[str, Any]], ...] = (
             {"from": {"dataset": "business"}, "select": ["name"], "where": {"field": "id", "op": "in", "value": {"$ids": {"step": 0, "field": "business.id"}}},
              "traverse": [{"relationship": "business_in_category", "as": "category", "select": ["name"]}],
              "order_by": [{"field": "category.name", "direction": "asc"}], "page": {"first": 500}}],
-         "answer_field": "category.id", "sources": ["relational", "graph"]},
+         "answer_field": "category.id", "sources": ["relational", "graph"], "refuse": {"code": "none", "reason": ""}},
     ),
     (
         "How many reviews does Tucson have?",
-        {"refuse": {"code": "unsupported", "reason": "Counting is not available in the query language; I can list the reviews instead."}},
+        {"plan": [], "answer_field": "", "sources": [],
+         "refuse": {"code": "unsupported", "reason": "Counting is not available in the query language; I can list the reviews instead."}},
     ),
 )
 

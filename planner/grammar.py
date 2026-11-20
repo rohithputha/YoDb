@@ -86,9 +86,9 @@ QUERY: dict[str, Any] = {
     "additionalProperties": False,
 }
 
-# One flat object: a plan answer fills "plan", "answer_field" and "sources"; a refusal fills "refuse".  The planner
-# checks that exactly one of the two is present.  Kept simple on purpose (no top-level anyOf, no integer bounds):
-# a grammar compiler that cannot realise one branch of an anyOf would leave the model only the other.
+# One flat object with every key required, so a grammar-constrained decoder cannot drop a key or strand a branch:
+# an answer is a non-empty "plan" with "answer_field" and "sources" and a "refuse" of code "none"; a refusal is an
+# empty "plan" and a "refuse" with its code.  (No top-level anyOf, no integer bounds: kept simple on purpose.)
 OUTPUT: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "PlannerOutput",
@@ -116,11 +116,12 @@ OUTPUT: dict[str, Any] = {
         "sources": {"type": "array", "items": {"type": "string", "enum": ["relational", "vector", "graph"]}},
         "refuse": {
             "type": "object",
-            "properties": {"code": {"type": "string", "enum": REFUSAL_CODES}, "reason": {"type": "string"}},
+            "properties": {"code": {"type": "string", "enum": [*REFUSAL_CODES, "none"]}, "reason": {"type": "string"}},
             "required": ["code", "reason"],
             "additionalProperties": False,
         },
     },
+    "required": ["plan", "answer_field", "sources", "refuse"],
     "additionalProperties": False,
 }
 

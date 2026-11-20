@@ -177,11 +177,15 @@ def parse_output(text: str) -> dict[str, Any]:
             raise PlanRejected(f"[output_invalid]: the answer was not valid JSON ({error.msg}).") from None
     if not isinstance(output, dict) or not ({"plan", "refuse"} & set(output)):
         raise PlanRejected("[output_invalid]: the answer must be an object with 'plan' or 'refuse'.")
-    if "plan" in output and "refuse" in output:
-        if output.get("plan"):
-            output = {k: v for k, v in output.items() if k != "refuse"}      # a plan was given: it counts
-        else:
-            output = {"refuse": output["refuse"]}
+    refusal = output.get("refuse") if isinstance(output.get("refuse"), dict) else None
+    if refusal is not None and str(refusal.get("code", "none")).lower() in ("none", "", "null"):
+        refusal = None
+    if output.get("plan"):
+        output = {k: v for k, v in output.items() if k != "refuse"}          # a plan was given: it counts
+    elif refusal is not None:
+        output = {"refuse": refusal}
+    else:
+        raise PlanRejected("[output_invalid]: give a non-empty 'plan', or a 'refuse' with a code and a reason.")
     if "refuse" in output and not (isinstance(output["refuse"], dict) and output["refuse"].get("code")):
         raise PlanRejected("[output_invalid]: a refusal needs a 'code' and a 'reason'.")
     return output

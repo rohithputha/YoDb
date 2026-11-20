@@ -146,7 +146,8 @@ class RenderTests(unittest.TestCase):
         self.assertIn("...", text)
         self.assertIn("0.1235", text)
         self.assertEqual(render_rows([]), "(no rows)")
-        self.assertIn("more rows", render_rows([{"i": i} for i in range(70)]))
+        self.assertNotIn("more rows", render_rows([{"i": i} for i in range(500)]))     # a baseline sees every row it is allowed
+        self.assertIn("more rows", render_rows([{"i": i} for i in range(70)], limit=60))
 
 
 if __name__ == "__main__":

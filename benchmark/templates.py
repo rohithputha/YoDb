@@ -101,7 +101,7 @@ _VEC = "ORDER BY r.text_embedding <=> %(vector)s::vector, r.review_id LIMIT %(to
 TEMPLATES: tuple[Template, ...] = (
     # ================= single source (60) =================
     Template(
-        "S01", "single", "Which businesses in {city} are rated at least {stars_hi} stars? Give their names.",
+        "S01", "single", "Which businesses in {city} are rated at least {stars_hi} stars? Give their names, in alphabetical order.",
         ("city", "stars_hi"), 8,
         plan=(q("business", ["name", "stars"], {"all": [p("city", "eq", "{city}"), p("stars", "gte", "{stars_hi}")]}, order_by=[("name", "asc")]),),
         sources=(RELATIONAL,), answer_dataset="business",
@@ -117,14 +117,14 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY b.review_count DESC, b.business_id LIMIT {PAGE}",
     ),
     Template(
-        "S03", "single", "Find reviews of at most {stars_lo} stars that at least {useful_min} people found useful.",
+        "S03", "single", "Find reviews of at most {stars_lo} stars that at least {useful_min} people found useful, most useful first.",
         ("stars_lo", "useful_min"), 6,
         plan=(q("review", ["stars", "useful"], {"all": [p("stars", "lte", "{stars_lo}"), p("useful", "gte", "{useful_min}")]}, order_by=[("useful", "desc")]),),
         sources=(RELATIONAL,), answer_dataset="review",
         oracle=f"SELECT r.review_id AS answer_id FROM yelp.review r WHERE r.stars <= %(stars_lo)s AND r.useful >= %(useful_min)s ORDER BY r.useful DESC, r.review_id LIMIT {PAGE}",
     ),
     Template(
-        "S04", "single", "Which five-star reviews were written in {month_name} {year}?",
+        "S04", "single", "Which five-star reviews were written in {month_name} {year}, earliest first?",
         ("year", "month"), 6,
         plan=(q("review", ["stars", "date"], {"all": [p("stars", "eq", 5), p("date", "gte", "{month_start}"), p("date", "lt", "{month_end}")]}, order_by=[("date", "asc")]),),
         sources=(RELATIONAL,), answer_dataset="review",
@@ -132,14 +132,14 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY r.date, r.review_id LIMIT {PAGE}",
     ),
     Template(
-        "S05", "single", "Which users who have ever been Yelp Elite have at least {fans_min} fans?",
+        "S05", "single", "Which users who have ever been Yelp Elite have at least {fans_min} fans? Most fans first.",
         ("fans_min",), 3,
         plan=(q("user", ["name", "fans"], {"all": [{"rule": "ever_elite"}, p("fans", "gte", "{fans_min}")]}, order_by=[("fans", "desc")]),),
         sources=(RELATIONAL,), answer_dataset="user",
         oracle=f"SELECT u.user_id AS answer_id FROM yelp.users u WHERE u.elite IS NOT NULL AND u.fans >= %(fans_min)s ORDER BY u.fans DESC, u.user_id LIMIT {PAGE}",
     ),
     Template(
-        "S06", "single", "Which users have written at least {user_reviews_min} reviews and give {stars_hi} stars or more on average?",
+        "S06", "single", "Which users have written at least {user_reviews_min} reviews and give {stars_hi} stars or more on average? Most reviews first.",
         ("user_reviews_min", "stars_hi"), 5,
         plan=(q("user", ["name", "review_count", "average_stars"], {"all": [p("review_count", "gte", "{user_reviews_min}"), p("average_stars", "gte", "{stars_hi}")]},
                order_by=[("review_count", "desc")]),),
@@ -170,7 +170,7 @@ TEMPLATES: tuple[Template, ...] = (
     ),
     # ================= independent multi-source (60): column joins, both sides filtered =================
     Template(
-        "I01", "independent", "Show the positive reviews (4 stars or more) of businesses in {city} rated at least {stars_hi} stars, with the business name.",
+        "I01", "independent", "Show the positive reviews (4 stars or more) of businesses in {city} rated at least {stars_hi} stars, with the business name, highest review rating first.",
         ("city", "stars_hi"), 12,
         plan=(q("review", ["stars"], {"rule": "positive"}, step("review_of_business", "business", ["name"], {"all": [p("city", "eq", "{city}"), p("stars", "gte", "{stars_hi}")]}),
                order_by=[("stars", "desc")]),),
@@ -179,7 +179,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"WHERE r.stars >= 4 AND {_BUSINESS_CITY_STARS} ORDER BY r.stars DESC, r.review_id, b.business_id LIMIT {PAGE}",
     ),
     Template(
-        "I02", "independent", "Which helpful negative reviews (2 stars or less, at least 5 useful votes) were written about open businesses in {city} with at least {review_count_min} reviews?",
+        "I02", "independent", "Which helpful negative reviews (2 stars or less, at least 5 useful votes) were written about open businesses in {city} with at least {review_count_min} reviews? Most useful first.",
         ("city", "review_count_min"), 12,
         plan=(q("review", ["stars", "useful"], {"all": [{"rule": "negative"}, {"rule": "helpful"}]},
                step("review_of_business", "business", ["name"], {"all": [p("city", "eq", "{city}"), {"rule": "open_now"}, p("review_count", "gte", "{review_count_min}")]}),
@@ -190,7 +190,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY r.useful DESC, r.review_id, b.business_id LIMIT {PAGE}",
     ),
     Template(
-        "I03", "independent", "Which five-star reviews written in {year} are by active reviewers (50 reviews or more)?",
+        "I03", "independent", "Which five-star reviews written in {year} are by active reviewers (50 reviews or more)? Earliest first.",
         ("year",), 6,
         plan=(q("review", ["stars", "date"], {"all": [p("stars", "eq", 5), p("date", "gte", "{year_start}"), p("date", "lt", "{year_end}")]},
                step("user_wrote_review", "author", ["name", "review_count"], {"rule": "active_reviewer"}, direction="reverse"), order_by=[("date", "asc")]),),
@@ -200,7 +200,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY r.date, r.review_id, u.user_id LIMIT {PAGE}",
     ),
     Template(
-        "I04", "independent", "List the negative reviews (2 stars or less) written by users who were ever Elite and have at least {fans_min} fans.",
+        "I04", "independent", "List the negative reviews (2 stars or less) written by users who were ever Elite and have at least {fans_min} fans, the users with most fans first.",
         ("fans_min",), 6,
         plan=(q("user", ["name", "fans"], {"all": [{"rule": "ever_elite"}, p("fans", "gte", "{fans_min}")]},
                step("user_wrote_review", "review", ["stars", "useful"], {"rule": "negative"}), order_by=[("fans", "desc")]),),
@@ -218,7 +218,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"WHERE b.name = %(business_name)s AND b.city = %(business_city)s AND r.stars = 5 ORDER BY b.name, b.business_id, r.review_id LIMIT {PAGE}",
     ),
     Template(
-        "I06", "independent", "For businesses in {city} with at least {review_count_min} reviews, list their helpful reviews (at least 5 useful votes).",
+        "I06", "independent", "For businesses in {city} with at least {review_count_min} reviews, list their helpful reviews (at least 5 useful votes), most useful first.",
         ("city", "review_count_min"), 8,
         plan=(q("business", ["name"], {"all": [p("city", "eq", "{city}"), p("review_count", "gte", "{review_count_min}")]},
                step("review_of_business", "review", ["useful"], {"rule": "helpful"}, direction="reverse"), order_by=[("review.useful", "desc")]),),
@@ -227,7 +227,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"WHERE b.city = %(city)s AND b.review_count >= %(review_count_min)s AND r.useful >= 5 ORDER BY r.useful DESC, b.business_id, r.review_id LIMIT {PAGE}",
     ),
     Template(
-        "I07", "independent", "Which reviews with at least {useful_min} useful votes were written by users with at least {fans_min} fans?",
+        "I07", "independent", "Which reviews with at least {useful_min} useful votes were written by users with at least {fans_min} fans? Most useful first.",
         ("useful_min", "fans_min"), 8,
         plan=(q("user", ["name", "fans"], p("fans", "gte", "{fans_min}"), step("user_wrote_review", "review", ["useful"], p("useful", "gte", "{useful_min}")),
                order_by=[("review.useful", "desc")]),),
@@ -237,7 +237,7 @@ TEMPLATES: tuple[Template, ...] = (
     ),
     # ================= dependent chains (80): graph edges and two-step plans =================
     Template(
-        "D01", "dependent", "Who are the friends of the user with id {user_id}?",
+        "D01", "dependent", "Who are the friends of the user with id {user_id}? Alphabetically by the friend's name.",
         ("user_id",), 8,
         plan=(q("user", ["name"], p("id", "eq", "{user_id}"), step("user_friends_with", "friend", ["name", "fans"]), order_by=[("friend.name", "asc")]),),
         sources=(GRAPH, RELATIONAL), answer="friend.id", answer_dataset="user",
@@ -245,7 +245,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"JOIN yelp.users fr ON fr.user_id = f.friend_id WHERE u.user_id = %(user_id)s ORDER BY fr.name, u.user_id, f.friend_id LIMIT {PAGE}",
     ),
     Template(
-        "D02", "dependent", "Which friends of users with at least {fans_min_hi} fans have at least {fans_min} fans themselves?",
+        "D02", "dependent", "Which friends of users with at least {fans_min_hi} fans have at least {fans_min} fans themselves? Take the users with most fans first.",
         ("fans_min_hi", "fans_min"), 8,
         plan=(q("user", ["name", "fans"], p("fans", "gte", "{fans_min_hi}"), step("user_friends_with", "friend", ["name", "fans"], p("fans", "gte", "{fans_min}")),
                order_by=[("fans", "desc")]),),
@@ -255,7 +255,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY u.fans DESC, u.user_id, f.friend_id LIMIT {PAGE}",
     ),
     Template(
-        "D03", "dependent", "Which businesses rated at least {stars_hi} stars has the user with id {user_id} reviewed?",
+        "D03", "dependent", "Which businesses rated at least {stars_hi} stars has the user with id {user_id} reviewed? Alphabetically by business name.",
         ("user_id", "stars_hi"), 8,
         plan=(q("user", ["name"], p("id", "eq", "{user_id}"), step("user_reviewed_business", "business", ["name", "stars"], p("stars", "gte", "{stars_hi}")),
                order_by=[("business.name", "asc")]),),
@@ -264,7 +264,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"WHERE r.user_id = %(user_id)s AND b.stars >= %(stars_hi)s ORDER BY b.business_id LIMIT {PAGE}",
     ),
     Template(
-        "D04", "dependent", "Which users with at least {fans_min} fans have reviewed {business_name} in {business_city}?",
+        "D04", "dependent", "Which users with at least {fans_min} fans have reviewed {business_name} in {business_city}? Most fans first.",
         ("business", "fans_min"), 8,
         plan=(q("business", ["name"], {"all": [p("name", "eq", "{business_name}"), p("city", "eq", "{business_city}")]},
                step("user_reviewed_business", "reviewer", ["name", "fans"], p("fans", "gte", "{fans_min}"), direction="reverse"), order_by=[("reviewer.fans", "desc")]),),
@@ -274,7 +274,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY u.user_id, b.business_id LIMIT {PAGE}",
     ),
     Template(
-        "D05", "dependent", "Which categories do the businesses in {city} rated at least {stars_hi} stars belong to?",
+        "D05", "dependent", "Which categories do the businesses in {city} rated at least {stars_hi} stars belong to? Alphabetically by category name.",
         ("city", "stars_hi"), 8,
         plan=(q("business", ["name"], {"all": [p("city", "eq", "{city}"), p("stars", "gte", "{stars_hi}")]}, step("business_in_category", "category", ["name"]),
                order_by=[("category.name", "asc")]),),
@@ -284,7 +284,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"WHERE {_BUSINESS_CITY_STARS} ORDER BY c.name, b.business_id, bc.category_id LIMIT {PAGE}",
     ),
     Template(
-        "D06", "dependent", "Which open businesses in {city} are listed under {category_name} and rated at least {stars_hi} stars?",
+        "D06", "dependent", "Which open businesses in {city} are listed under {category_name} and rated at least {stars_hi} stars? Highest rated first.",
         ("category", "city", "stars_hi"), 8,
         plan=(q("category", ["name"], p("id", "eq", "{category}"),
                step("business_in_category", "business", ["name", "stars"], {"all": [p("city", "eq", "{city}"), {"rule": "open_now"}, p("stars", "gte", "{stars_hi}")]}, direction="reverse"),
@@ -294,7 +294,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"WHERE bc.category_id = %(category)s AND b.city = %(city)s AND b.is_open AND b.stars >= %(stars_hi)s ORDER BY b.stars DESC, bc.category_id, b.business_id LIMIT {PAGE}",
     ),
     Template(
-        "D07", "dependent", "Which categories are the businesses reviewed by the user with id {user_id} listed under?",
+        "D07", "dependent", "Which categories are the businesses reviewed by the user with id {user_id} listed under? Alphabetically by category name.",
         ("user_id",), 8,
         plan=(q("user", ["name"], p("id", "eq", "{user_id}"), step("user_reviewed_business", "business", ["name"])),
               q("business", ["name"], p("id", "in", ids_from(0, "business.id")), step("business_in_category", "category", ["name"]), order_by=[("category.name", "asc")])),
@@ -304,7 +304,7 @@ TEMPLATES: tuple[Template, ...] = (
         notes="two steps: the businesses reached over REVIEWED, then their categories over IN_CATEGORY",
     ),
     Template(
-        "D08", "dependent", "Which businesses in {city} share a category with {business_name} in {business_city}?",
+        "D08", "dependent", "Which businesses in {city} share a category with {business_name} in {business_city}? Alphabetically by business name.",
         ("business", "city"), 8,
         plan=(q("business", ["name"], {"all": [p("name", "eq", "{business_name}"), p("city", "eq", "{business_city}")]}, step("business_in_category", "category", ["name"])),
               q("category", ["name"], p("id", "in", ids_from(0, "category.id")),
@@ -317,7 +317,7 @@ TEMPLATES: tuple[Template, ...] = (
         notes="two steps over the category vertices (business -> category -> business)",
     ),
     Template(
-        "D09", "dependent", "Which businesses rated at least {stars_hi} stars have the friends of the user with id {user_id} reviewed?",
+        "D09", "dependent", "Which businesses rated at least {stars_hi} stars have the friends of the user with id {user_id} reviewed? Alphabetically by business name.",
         ("user_id", "stars_hi"), 8,
         plan=(q("user", ["name"], p("id", "eq", "{user_id}"), step("user_friends_with", "friend", ["name"])),
               q("user", ["name"], p("id", "in", ids_from(0, "friend.id")), step("user_reviewed_business", "business", ["name", "stars"], p("stars", "gte", "{stars_hi}")),
@@ -354,8 +354,9 @@ TEMPLATES: tuple[Template, ...] = (
         expect_error="refusal", notes="counting is not supported: a correct system says so (or fetches and counts, which the harness also accepts)",
     ),
     Template(
-        "X05", "stress", "Which businesses in {city} have excellent stars?", ("city",), 5,
-        plan=(q("business", ["name"], {"all": [p("city", "eq", "{city}"), p("stars", "gte", "excellent")]}),), expect_error="query_value_type_invalid",
+        "X05", "stress", "Which reviews of businesses in {city} were written on 2019-13-45?", ("city",), 5,
+        plan=(q("review", ["stars"], p("date", "gte", "2019-13-45T00:00:00Z"), step("review_of_business", "business", ["name"], p("city", "eq", "{city}"))),), expect_error="query_value_type_invalid",
+        notes="an impossible date: a correct system pushes back rather than invent one",
     ),
     Template(
         "X06", "stress", "What is the best place?", (), 5, expect_error="refusal",
