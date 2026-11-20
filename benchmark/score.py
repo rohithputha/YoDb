@@ -161,10 +161,13 @@ def score(questions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str, An
             if values:
                 section[f"{name}_p50"] = percentile(values, 0.5)
                 section[f"{name}_p95"] = percentile(values, 0.95)
-        for name in ("tokens_in", "tokens_out", "repairs", "records_transferred"):
+        for name in ("tokens_in", "tokens_out", "repairs", "records_transferred", "native_queries", "native_errors", "tool_calls"):
             values = [float(first[i].get(name, 0) or 0) for i in ids]
             if values:
                 section[f"{name}_mean"] = sum(values) / len(values)
+        queries = sum(float(first[i].get("native_queries", 0) or 0) for i in ids)
+        if queries:
+            section["native_error_rate"] = sum(float(first[i].get("native_errors", 0) or 0) for i in ids) / queries
         section["errors"] = sorted({first[i]["error"] for i in ids if first[i].get("error")})
         report["classes"][cls] = section
     return report
@@ -176,14 +179,14 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def print_report(name: str, report: Mapping[str, Any]) -> None:
     print(f"\n{name}: {report['predicted']}/{report['questions']} questions predicted")
-    header = f"{'class':<12}{'n':>5}{'EM':>8}{'F1':>8}{'valid':>8}{'srcF1':>8}{'provF1':>8}{'p50ms':>9}{'p95ms':>9}{'tok':>7}{'rep':>5}"
+    header = f"{'class':<12}{'n':>5}{'EM':>8}{'F1':>8}{'valid':>8}{'srcF1':>8}{'provF1':>8}{'p50ms':>9}{'p95ms':>9}{'tok':>7}{'rep':>5}{'nerr':>6}"
     print(header)
     for cls, section in report["classes"].items():
         def cell(key, width=8, digits=3):
             value = section.get(key)
             return f"{value:>{width}.{digits}f}" if isinstance(value, (int, float)) else f"{'-':>{width}}"
         print(f"{cls:<12}{section['questions']:>5}{cell('answer_em')}{cell('answer_f1')}{cell('plan_valid')}{cell('source_f1')}"
-              f"{cell('provenance_f1')}{cell('latency_ms_p50', 9, 0)}{cell('latency_ms_p95', 9, 0)}{cell('tokens_in_mean', 7, 0)}{cell('repairs_mean', 5, 1)}")
+              f"{cell('provenance_f1')}{cell('latency_ms_p50', 9, 0)}{cell('latency_ms_p95', 9, 0)}{cell('tokens_in_mean', 7, 0)}{cell('repairs_mean', 5, 1)}{cell('native_errors_mean', 6, 2)}")
         if section.get("answer_f1_ci"):
             print(f"{'':<12}{'':>5}  F1 95% CI {section['answer_f1_ci'][0]:.3f}-{section['answer_f1_ci'][1]:.3f}"
                   + (f"; errors seen: {', '.join(section['errors'])}" if section.get("errors") else ""))

@@ -53,6 +53,9 @@ class Prediction:
     tokens_out: int = 0
     repairs: int = 0
     records_transferred: int = 0                               # intermediate records moved between steps/sources
+    native_queries: int = 0                                    # native statements the system sent to a store (baselines)
+    native_errors: int = 0                                     # of which the store rejected (H1's "invalid native queries")
+    tool_calls: int = 0                                        # tool invocations (baselines)
     run: int = 0                                               # repetition index
 
 
@@ -133,7 +136,18 @@ def run_plan(db, plan: Sequence[Mapping[str, Any]], answer_field: str, answer_da
         prediction.evidence[answer_dataset] = list(dict.fromkeys([*prediction.evidence[answer_dataset], *prediction.answer]))
     prediction.sources = kinds_of(db, plan)
     prediction.records_transferred = transferred
+    prediction.native_queries = sum(_reads_of(db, step) for step in plan)      # validated before they ran: none invalid
     return prediction
+
+
+def _reads_of(db, step: Mapping[str, Any]) -> int:
+    """Native statements one typed step issues, from its explained plan (scans and edge reads, batches aside)."""
+
+    try:
+        explanation = db.explain(substitute_ids(step, [[{"id": "x"}]]))
+    except Exception:
+        return 1
+    return sum(1 for node in explanation.nodes if node.kind in ("remote_scan", "graph_edge_scan")) or 1
 
 
 def evidence_of(db, plan: Sequence[Mapping[str, Any]], rows_per_step: Sequence[Sequence[Mapping[str, Any]]]) -> dict[str, list[str]]:
@@ -229,7 +243,9 @@ def run(system: System, questions: Sequence[Mapping[str, Any]], out: Path, *, re
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("system", choices=["gold", "planner"], help="gold: each question's gold plan through YoDb; planner: the natural-language planner")
+    parser.add_argument("system", choices=["gold", "planner", "tool-agent", "router"],
+                        help="gold: each question's gold plan through YoDb (B3); planner: the natural-language planner; "
+                             "tool-agent: B1, the same model over raw SQL/vector/Cypher tools; router: B2, framework routing")
     parser.add_argument("--questions", type=Path, default=HERE / "questions.jsonl")
     parser.add_argument("--out", type=Path, default=None, help="predictions file (default runs/<system>.jsonl)")
     parser.add_argument("--catalog", type=Path, default=HERE.parent / "examples" / "yelp" / "catalog")
@@ -250,6 +266,9 @@ def main(argv: list[str] | None = None) -> int:
     planner_options.add_argument("--top-k", type=int, default=12, help="entries the SSSI keeps for the retrieved representation")
     planner_options.add_argument("--no-grammar", action="store_true", help="do not constrain decoding with the output JSON Schema")
     planner_options.add_argument("--no-examples", action="store_true")
+    baseline_options = parser.add_argument_group("baselines", "options of the tool agent and the router")
+    baseline_options.add_argument("--dsn", default=os.environ.get("YODB_CONN_YELP"), help="the read-only connection the baselines use directly (default: $YODB_CONN_YELP)")
+    baseline_options.add_argument("--max-turns", type=int, default=8, help="tool calls the tool agent may make")
     args = parser.parse_args(argv)
 
     import yodb
@@ -270,15 +289,31 @@ def main(argv: list[str] | None = None) -> int:
         if args.system == "gold":
             system: System = GoldPlanSystem(db, timeout=args.timeout)
         else:
-            from planner import NaturalLanguagePlanner, PlannerConfig
             from planner.llm import OpenAICompatibleGenerator, TransformersGenerator
-            from planner.sssi import SchemaIndex
 
             generator = OpenAICompatibleGenerator(args.model, base_url=args.endpoint) if args.endpoint else TransformersGenerator(args.model)
-            index = SchemaIndex(db.catalog, embedder) if args.schema == "retrieved" else None
-            config = PlannerConfig(representation=args.schema, repairs=args.repairs, grammar=not args.no_grammar, top_k=args.top_k,
-                                   examples=not args.no_examples, timeout=args.timeout)
-            system = NaturalLanguagePlanner(db, generator, config, index=index)
+            if args.system == "planner":
+                from planner import NaturalLanguagePlanner, PlannerConfig
+                from planner.sssi import SchemaIndex
+
+                index = SchemaIndex(db.catalog, embedder) if args.schema == "retrieved" else None
+                config = PlannerConfig(representation=args.schema, repairs=args.repairs, grammar=not args.no_grammar, top_k=args.top_k,
+                                       examples=not args.no_examples, timeout=args.timeout)
+                system = NaturalLanguagePlanner(db, generator, config, index=index)
+            else:
+                from baselines.tools import RawStores
+
+                if not args.dsn:
+                    parser.error("the baselines need --dsn (or $YODB_CONN_YELP): they read the stores directly")
+                stores = RawStores(args.dsn, embedder, statement_timeout_seconds=args.timeout)
+                if args.system == "tool-agent":
+                    from baselines.tool_agent import ToolAgent
+
+                    system = ToolAgent(stores, generator, max_turns=args.max_turns, grammar=not args.no_grammar)
+                else:
+                    from baselines.router import RouterSystem
+
+                    system = RouterSystem(stores, generator, grammar=not args.no_grammar)
             out = args.out or HERE / "runs" / f"{system.name}{'-sequential' if args.sequential else ''}.jsonl"
         predictions = run(system, questions, out, repeat=args.repeat, warm_up=args.warm_up, quiet=args.quiet)
     print(f"wrote {len(predictions)} predictions to {out}")
