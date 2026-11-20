@@ -85,7 +85,7 @@ class ToolAgentTests(unittest.TestCase):
         self.assertGreater(prediction.tokens_in, 0)
         self.assertEqual(prediction.retrieval_ms, 3.0)
         self.assertEqual(len(prediction.plan), 1)
-        self.assertIn("TOOL RESULT (sql):", self.generator.calls[1][-1]["content"])
+        self.assertIn("TOOL RESULT #1 (sql):", self.generator.calls[1][-1]["content"])
         self.assertIn('"business_id": "b1"', self.generator.calls[1][-1]["content"])
 
     def test_a_rejected_native_query_is_counted_and_shown_to_the_model_which_may_fix_it(self) -> None:
@@ -130,6 +130,32 @@ class ToolAgentTests(unittest.TestCase):
         self.assertEqual(prediction.repairs, 1)
         self.assertEqual(prediction.answer, ["b2"])
         self.assertIn("not a JSON tool call", self.generator.calls[1][-1]["content"])
+
+    def test_the_final_answer_may_refer_to_a_result_column_instead_of_copying_ids(self) -> None:
+        agent = self.agent([
+            call("sql", query="SELECT business_id, name FROM yelp.business WHERE stars >= 4.5 ORDER BY name LIMIT 500"),
+            call("cypher", query="MATCH (u:User)-[:REVIEWED]->(b:Business) RETURN u.id, b.id", columns=2),
+            call("final", answer_dataset="business", answer_from={"result": 1, "column": "business_id"}, evidence={"user": {"result": 2, "column": "c0"}}),
+        ])
+        prediction = agent.answer({"id": "q", "question": "q"})
+        self.assertEqual(prediction.answer, [b["business_id"] for b in BUSINESSES if b["stars"] >= 4.5])
+        self.assertEqual(prediction.evidence["user"], list(dict.fromkeys(a for a, _ in EDGES["REVIEWED"])))
+        self.assertEqual(prediction.evidence["business"], prediction.answer)
+        self.assertIn("TOOL RESULT #2 (cypher):", self.generator.calls[2][-1]["content"])
+
+    def test_a_reference_that_does_not_resolve_is_explained_and_corrected(self) -> None:
+        agent = self.agent([
+            call("sql", query="SELECT business_id FROM yelp.business WHERE stars >= 4.5"),
+            call("final", answer_dataset="business", answer_from={"result": 1, "column": "nope"}),
+            call("final", answer_dataset="business", answer_from={"result": 3, "column": "business_id"}),
+            call("final", answer_dataset="business", answer_from={"result": 1, "column": "business_id"}),
+        ])
+        prediction = agent.answer({"id": "q", "question": "q"})
+        self.assertEqual(prediction.repairs, 2)
+        self.assertIn("column 'nope' of result #1, whose columns are", self.generator.calls[2][-1]["content"])
+        self.assertIn("numbered 1 to 1", self.generator.calls[3][-1]["content"])
+        self.assertEqual(prediction.answer, [b["business_id"] for b in BUSINESSES if b["stars"] >= 4.5])
+        self.assertTrue(prediction.plan_valid)
 
     def test_the_system_prompt_carries_the_raw_schemas_and_the_tools(self) -> None:
         agent = self.agent([call("refuse", code="other", reason="x")])
@@ -191,6 +217,19 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(prediction.sources, ["graph", "relational", "vector"])
         self.assertIn("Earlier sub-answer (vector", self.generator.calls[2][-1]["content"])
         self.assertEqual(prediction.retrieval_ms, 9.0)
+
+    def test_the_aggregator_may_answer_by_reference_to_a_numbered_sub_answer(self) -> None:
+        router = self.router([
+            {"sub_questions": [{"question": "businesses rated >= 4.5", "tool": "sql"}]},
+            {"query": "SELECT business_id, name FROM yelp.business WHERE stars >= 4.5 ORDER BY 1 LIMIT 500"},
+            {"answer_dataset": "business", "answer_from": {"sub_answer": 2, "column": "business_id"}},
+            {"answer_dataset": "business", "answer_from": {"sub_answer": 1, "column": "business_id"}},
+        ])
+        prediction = router.answer({"id": "q", "question": "q"})
+        self.assertEqual(prediction.answer, [b["business_id"] for b in BUSINESSES if b["stars"] >= 4.5])
+        self.assertIn("Sub-answer #1 (sql)", self.generator.calls[2][-1]["content"])
+        self.assertIn("numbered 1 to 1", self.generator.calls[3][-1]["content"])
+        self.assertEqual(prediction.evidence, {"business": prediction.answer})
 
     def test_a_rejected_native_query_is_counted_and_the_plan_is_not_valid(self) -> None:
         router = self.router([

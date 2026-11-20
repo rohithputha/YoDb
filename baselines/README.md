@@ -14,6 +14,15 @@ through `baselines/tools.py`: SELECT-only SQL, a vector search that embeds the p
 model as the data, and read-only Cypher wrapped in `ag_catalog.cypher()`. Reads are capped at 500
 rows and the statement timeout applies.
 
+Tool results are numbered, and a final answer names its ids either by copying them (`answer_ids`)
+or by reference (`answer_from: {"result": n, "column": c}` for the agent, `{"sub_answer": n, ...}`
+for the router): every value of that column of that result, in its order. The reference form is
+what a framework does when it takes the ids from an engine's source rows, and it keeps a 500-id
+answer from costing thousands of output tokens; a reference to a result or column that does not
+exist is reported back to the model once, as a tool error, for it to correct. Both prompts say that
+the answer ids are primary-key values (`business_id`, `review_id`, `user_id`, `category_id`), never
+names, and that every query must select the id column of the entity it asks about.
+
 What the scorer reads from them, beyond answers and evidence: `native_queries` and
 `native_errors` (H1's "invalid native queries"), `tool_calls`, tokens over all turns, and
 `sources` from the tools that succeeded. The typed systems report `native_queries` too (every

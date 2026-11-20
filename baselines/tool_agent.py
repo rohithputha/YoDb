@@ -36,15 +36,21 @@ Reply with exactly one JSON object per turn, nothing else:
       returns the review ids nearest to the text with their distance (smaller is nearer)
   {"tool": "cypher", "arguments": {"query": "MATCH ... RETURN ...", "columns": <number of RETURN items>}}
       the query runs inside ag_catalog.cypher(); vertices hold only the property id (text); return ids, not vertices
-  {"tool": "final", "arguments": {"answer_dataset": "<business|review|user|category>", "answer_ids": ["..."], "evidence": {"<dataset>": ["..."]}}}
-      the answer is a set of ids of one dataset; evidence lists the ids of other datasets the answer rests on
+  {"tool": "final", "arguments": {"answer_dataset": "<business|review|user|category>",
+                                  "answer_from": {"result": <n>, "column": "<column>"}  or  "answer_ids": ["..."],
+                                  "evidence": {"<dataset>": {"result": <n>, "column": "<column>"} or ["..."]}}}
+      the answer is the set of ids of one dataset: primary-key values (business_id, review_id, user_id, category_id),
+      never names. Prefer answer_from: it means every value of that column of tool result #n, in its order, and
+      costs nothing to write; list answer_ids only to hand-pick ids. evidence names the ids of the other datasets the
+      answer rests on, in the same two forms.
   {"tool": "refuse", "arguments": {"code": "unsupported" | "ambiguous" | "not_a_read" | "no_such_data" | "other", "reason": "..."}}
 
-Each tool result comes back as a message starting with TOOL RESULT. A result starting with "error:" means the store
-rejected your query: fix it and try again. Reads are capped at 500 rows; use ORDER BY and LIMIT 500. You have at most
-{turns} tool calls before you must answer; answer as soon as you can. Never guess ids: every id in your answer must
-come from a tool result. If the question cannot be answered from these stores (it asks for a write, or for data that
-is not there, or is too ambiguous), refuse.
+Each tool result comes back as a message starting with TOOL RESULT #n. A result starting with "error:" means the
+store rejected your query: fix it and try again. Reads are capped at 500 rows; use ORDER BY and LIMIT 500, and always
+select the id column of the entity the question asks about (and of any entity you will cite as evidence). You have at
+most {turns} tool calls before you must answer; answer as soon as you can. Never guess ids: every id in your answer
+must come from a tool result. If the question cannot be answered from these stores (it asks for a write, or for data
+that is not there, or is too ambiguous), refuse.
 
 SCHEMAS
 {schema}
@@ -102,6 +108,7 @@ class ToolAgent:
             {"role": "user", "content": f"Question: {question}"},
         ]
         sources: set[str] = set()
+        results: list[list[dict[str, Any]]] = []            # the rows of every tool result, by number (1-based)
         retrieval_ms = 0.0
         finished = False
         for _ in range(self.max_turns + 1):
@@ -119,7 +126,12 @@ class ToolAgent:
             tool, arguments = call["tool"], call.get("arguments") or {}
             prediction.tool_calls += 1
             if tool == "final":
-                self._finish(prediction, arguments)
+                problem = self._finish(prediction, arguments, results)
+                if problem:
+                    outcome.turns.append(Turn(call, problem, generation.tokens_in, generation.tokens_out))
+                    conversation.append({"role": "user", "content": f"TOOL RESULT (final): {problem} Reply with one JSON tool call."})
+                    prediction.repairs += 1
+                    continue
                 outcome.turns.append(Turn(call, "final", generation.tokens_in, generation.tokens_out))
                 finished = True
                 break
@@ -138,8 +150,9 @@ class ToolAgent:
             retrieval_ms += result.latency_ms
             if result.ok:
                 sources.add(TOOL_KINDS[tool])
+            results.append(result.rows if result.ok else [])
             outcome.turns.append(Turn(call, result.text, generation.tokens_in, generation.tokens_out, result.native_error, result.latency_ms))
-            conversation.append({"role": "user", "content": f"TOOL RESULT ({tool}):\n{result.text}"})
+            conversation.append({"role": "user", "content": f"TOOL RESULT #{len(results)} ({tool}):\n{result.text}"})
         if not finished:
             prediction.error = "agent_gave_up"
             prediction.plan_valid = False
@@ -166,15 +179,52 @@ class ToolAgent:
         return ToolResult(False, f"error: unknown tool {tool!r}", [], native_error=True)
 
     @staticmethod
-    def _finish(prediction: Prediction, arguments: Mapping[str, Any]) -> None:
-        ids = arguments.get("answer_ids") or []
-        prediction.answer = list(dict.fromkeys(str(i) for i in ids if i is not None)) if isinstance(ids, list) else []
-        evidence = arguments.get("evidence") or {}
-        prediction.evidence = {str(k): [str(i) for i in v] for k, v in evidence.items() if isinstance(v, list)} if isinstance(evidence, dict) else {}
+    def _finish(prediction: Prediction, arguments: Mapping[str, Any], results: list[list[dict[str, Any]]]) -> str | None:
+        """Fill the prediction from a final call; the problem text when a reference does not resolve."""
+
+        try:
+            answer, evidence = resolve_final(arguments, results)
+        except BadReference as error:
+            return f"error: {error}"
+        prediction.answer = answer
+        prediction.evidence = evidence
         dataset = str(arguments.get("answer_dataset") or "")
         if dataset:
             prediction.evidence[dataset] = list(dict.fromkeys([*prediction.evidence.get(dataset, []), *prediction.answer]))
         prediction.plan_valid = True
+        return None
+
+
+def resolve_final(arguments: Mapping[str, Any], results: list[list[dict[str, Any]]], *, reference_key: str = "result") -> tuple[list[str], dict[str, list[str]]]:
+    """The answer ids and evidence of a final answer whose ids may be given by reference to a result's column.
+
+    ``{"<reference_key>": n, "column": c}`` means every value of column ``c`` of result number ``n`` (1-based),
+    in order; a list means those ids.  A reference to a result or column that does not exist raises
+    :class:`BadReference`, which the agent is told about so it can correct itself.
+    """
+
+    def ids_of(value: Any, what: str) -> list[str]:
+        if isinstance(value, Mapping):
+            number, column = value.get(reference_key), value.get("column")
+            if not isinstance(number, int) or isinstance(number, bool) or not 1 <= number <= len(results):
+                raise BadReference(f"{what} refers to {reference_key} #{number!r}, but results are numbered 1 to {len(results)}.")
+            rows = results[number - 1]
+            if not isinstance(column, str) or (rows and not any(column in row for row in rows)):
+                columns = sorted({key for row in rows for key in row})
+                raise BadReference(f"{what} refers to column {column!r} of {reference_key} #{number}, whose columns are {columns}.")
+            return list(dict.fromkeys(str(row[column]) for row in rows if row.get(column) is not None))
+        if isinstance(value, list):
+            return list(dict.fromkeys(str(i) for i in value if i is not None))
+        return []
+
+    answer = ids_of(arguments.get("answer_from") if arguments.get("answer_from") is not None else arguments.get("answer_ids"), "answer_from")
+    evidence_raw = arguments.get("evidence") or {}
+    evidence = {str(k): ids_of(v, f"evidence[{k!r}]") for k, v in evidence_raw.items()} if isinstance(evidence_raw, Mapping) else {}
+    return answer, {k: v for k, v in evidence.items() if v}
+
+
+class BadReference(ValueError):
+    """A final answer refers to a result or column that does not exist."""
 
 
 def parse_tool_call(text: str) -> dict[str, Any]:

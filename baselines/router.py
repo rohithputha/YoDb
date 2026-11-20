@@ -27,7 +27,9 @@ from typing import Any
 
 from benchmark.harness import Prediction
 from planner.llm import Generator
-from planner.planner import PlanRejected, parse_output
+from planner.planner import PlanRejected
+
+from .tool_agent import BadReference, resolve_final
 
 ENGINES = ("sql", "vector", "graph")
 LONG_ANSWER_TOKENS = 12_000          # an answer may list up to 500 ids
@@ -51,8 +53,9 @@ SCHEMAS
 
 ENGINE_PROMPT = {
     "sql": """\
-Write one PostgreSQL SELECT statement that answers the sub-question. Return ids (the *_id columns) and the columns
-asked for; ORDER BY a column and LIMIT 500. Reply with exactly one JSON object: {"query": "<SQL>"}.
+Write one PostgreSQL SELECT statement that answers the sub-question. Always select the id column (business_id,
+review_id, user_id, category_id) of the entity the sub-question asks about, besides the columns asked for; ORDER BY a
+column and LIMIT 500. Reply with exactly one JSON object: {"query": "<SQL>"}.
 Earlier sub-answers, if any, are given as context; use their ids literally in your query.
 
 SCHEMAS
@@ -77,10 +80,15 @@ SCHEMAS
 }
 
 AGGREGATE = """\
-You are given a question and the sub-answers tools produced for it (rows with ids). Decide the final answer: the set of ids
-of one dataset that answers the question, using only ids that appear in the sub-answers. Reply with exactly one JSON object:
-{"answer_dataset": "<business|review|user|category>", "answer_ids": ["..."], "evidence": {"<dataset>": ["..."]}}
-List every id that answers the question (up to 500), exactly as it appears in the sub-answers.
+You are given a question and the numbered sub-answers tools produced for it (rows with ids). Decide the final answer: the
+set of ids of one dataset that answers the question, using only ids that appear in the sub-answers. The ids are primary-key
+values (business_id, review_id, user_id, category_id), never names. Reply with exactly one JSON object:
+{"answer_dataset": "<business|review|user|category>",
+ "answer_from": {"sub_answer": <n>, "column": "<column>"}  or  "answer_ids": ["..."],
+ "evidence": {"<dataset>": {"sub_answer": <n>, "column": "<column>"} or ["..."]}}
+Prefer answer_from: it means every value of that column of sub-answer #n, in its order, and costs nothing to write; list
+answer_ids only to hand-pick ids. evidence names the ids of the other datasets the answer rests on, in the same two forms.
+If no sub-answer holds the ids of the entity asked about, answer_ids is [].
 """
 
 _SCHEMA_DECOMPOSE: dict[str, Any] = {
@@ -94,10 +102,11 @@ _SCHEMA_FINAL: dict[str, Any] = {
     "type": "object",
     "properties": {
         "answer_dataset": {"type": "string"},
+        "answer_from": {"type": "object", "properties": {"sub_answer": {"type": "integer"}, "column": {"type": "string"}}, "required": ["sub_answer", "column"]},
         "answer_ids": {"type": "array", "items": {"type": "string"}},
         "evidence": {"type": "object"},
     },
-    "required": ["answer_dataset", "answer_ids"],
+    "required": ["answer_dataset"],
 }
 _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -160,21 +169,27 @@ class RouterSystem:
         prediction.sources = sorted({ENGINE_KINDS[a.tool] for a in answers if not a.native_error} | ({"relational"} if any(not a.native_error for a in answers) else set()))
         prediction.retrieval_ms = sum(a.latency_ms for a in answers)
         # 3. aggregate
-        context = "\n\n".join(f"Sub-question ({a.tool}): {a.question}\nNative query: {json.dumps(a.native)}\nResult:\n{a.text}" for a in answers)
-        try:
-            final = self._json(
-                [{"role": "system", "content": AGGREGATE}, {"role": "user", "content": f"Question: {question}\n\n{context}"}],
-                prediction, _SCHEMA_FINAL, max_tokens=LONG_ANSWER_TOKENS,
-            )
-        except PlanRejected:
-            prediction.error = "router_output_invalid"
-            prediction.plan_valid = False
-            prediction.latency_ms = (time.perf_counter() - started) * 1000
-            return prediction
-        ids = final.get("answer_ids") or []
-        prediction.answer = list(dict.fromkeys(str(i) for i in ids if i is not None)) if isinstance(ids, list) else []
-        evidence = final.get("evidence") or {}
-        prediction.evidence = {str(k): [str(i) for i in v] for k, v in evidence.items() if isinstance(v, list)} if isinstance(evidence, dict) else {}
+        context = "\n\n".join(
+            f"Sub-answer #{number} ({a.tool}): {a.question}\nNative query: {json.dumps(a.native)}\nResult:\n{a.text}"
+            for number, a in enumerate(answers, 1)
+        )
+        messages = [{"role": "system", "content": AGGREGATE}, {"role": "user", "content": f"Question: {question}\n\n{context}"}]
+        results = [a.rows for a in answers]
+        for _ in range(2):                                   # a reference that does not resolve is corrected once
+            try:
+                final = self._json(messages, prediction, _SCHEMA_FINAL, max_tokens=LONG_ANSWER_TOKENS)
+                answer_ids, evidence = resolve_final(final, results, reference_key="sub_answer")
+                break
+            except PlanRejected:
+                prediction.error = "router_output_invalid"
+                prediction.plan_valid = False
+                prediction.latency_ms = (time.perf_counter() - started) * 1000
+                return prediction
+            except BadReference as error:
+                messages = [*messages, {"role": "assistant", "content": json.dumps(final)}, {"role": "user", "content": f"error: {error} Reply with the corrected JSON object."}]
+                answer_ids, evidence = [], {}
+        prediction.answer = answer_ids
+        prediction.evidence = evidence
         dataset = str(final.get("answer_dataset") or "")
         if dataset:
             prediction.evidence[dataset] = list(dict.fromkeys([*prediction.evidence.get(dataset, []), *prediction.answer]))
