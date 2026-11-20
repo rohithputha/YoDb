@@ -231,8 +231,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--archive", type=Path, help="an already downloaded archive to extract when the files are missing")
     parser.add_argument("--kaggle", action="store_true", help="fetch the Kaggle mirror when the files are missing (kaggle CLI + credentials)")
     parser.add_argument("--dsn", default=os.environ.get("YELP_DSN"), help="owner connection string (or env YELP_DSN)")
-    parser.add_argument("steps", nargs="*", default=["tables", "embeddings", "graph"], choices=["tables", "embeddings", "graph"],
-                        help="which steps to run (default: all three)")
+    # (checked by hand: argparse's ``choices`` with ``nargs="*"`` rejects the empty/default list in some Python versions)
+    parser.add_argument("steps", nargs="*", metavar="STEP", help="which of tables, embeddings, graph to run (default: all three)")
     parser.add_argument("--schema", action="store_true", help="apply schema.sql first (drops the yelp schema and the graph)")
     parser.add_argument("--preset", choices=sorted(PRESETS), default="target")
     for name in ("businesses", "reviews", "users", "friend-edges"):
@@ -247,6 +247,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="sample and print the counts; touch no database")
     parser.add_argument("--save-sample", type=Path, help="also write the sampled IDs as JSON (for reproducibility notes)")
     args = parser.parse_args(argv)
+    args.steps = args.steps or ["tables", "embeddings", "graph"]
+    unknown = [step for step in args.steps if step not in ("tables", "embeddings", "graph")]
+    if unknown:
+        parser.error(f"steps must be among tables, embeddings, graph (not {unknown[0]!r})")
 
     sizes = {**PRESETS[args.preset]}
     for name in ("businesses", "reviews", "users", "friend_edges"):
