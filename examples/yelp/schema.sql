@@ -76,7 +76,12 @@ CREATE INDEX review_stars_idx ON yelp.review (stars);
 CREATE INDEX business_city_idx ON yelp.business (city);
 CREATE INDEX business_stars_idx ON yelp.business (stars);
 
--- The graph: vertices hold only the id; edges carry the relationships.
+-- The graph: vertices hold only the id; edges carry the relationships.  A graph from an earlier load is dropped.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'yelp_graph') THEN
+    PERFORM ag_catalog.drop_graph('yelp_graph', true);
+  END IF;
+END $$;
 SELECT ag_catalog.create_graph('yelp_graph');
 SELECT ag_catalog.create_vlabel('yelp_graph', 'Business');
 SELECT ag_catalog.create_vlabel('yelp_graph', 'User');
