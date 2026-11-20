@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 import json
 import os
+import re
 import time
 from typing import Any, Protocol
 import urllib.request
@@ -48,6 +49,7 @@ class OpenAICompatibleGenerator:
         max_tokens: int = 1500,
         guided: bool = True,
         timeout: float = 120.0,
+        thinking: bool = False,
     ) -> None:
         self.name = model
         self.model = model
@@ -56,6 +58,9 @@ class OpenAICompatibleGenerator:
         self.max_tokens = max_tokens
         self.guided = guided
         self.timeout = timeout
+        # A reasoning model (Qwen3, ...) may think before it answers.  Thinking is turned off with the
+        # model's soft switch so the answer is the JSON alone; what it still emits in <think> tags is removed.
+        self.thinking = thinking
 
     # How the schema is handed over, tried in this order until the server accepts one (remembered afterwards):
     # OpenAI's structured outputs, vLLM's guided decoding, plain JSON mode, nothing.
@@ -67,10 +72,13 @@ class OpenAICompatibleGenerator:
         modes = [m for m in self.MODES if self.guided or m in ("json_object", "none")] if json_schema is not None else ["none"]
         if getattr(self, "_mode", None) in modes:
             modes = modes[modes.index(self._mode):]
+        messages = list(messages)
+        if not self.thinking and messages and messages[-1]["role"] == "user" and "/no_think" not in messages[-1]["content"]:
+            messages[-1] = {**messages[-1], "content": messages[-1]["content"] + " /no_think"}
         last_error: Exception | None = None
         for mode in modes:
             body: dict[str, Any] = {
-                "model": self.model, "messages": list(messages), "temperature": 0, "max_tokens": self.max_tokens, "seed": 0,
+                "model": self.model, "messages": messages, "temperature": 0, "max_tokens": self.max_tokens, "seed": 0,
             }
             if mode == "json_schema":
                 body["response_format"] = {"type": "json_schema", "json_schema": {"name": "output", "schema": json_schema}}
@@ -94,10 +102,22 @@ class OpenAICompatibleGenerator:
                 raise
             self._mode = mode
             latency = (time.perf_counter() - started) * 1000
-            text = payload["choices"][0]["message"]["content"] or ""
+            text = strip_thinking(payload["choices"][0]["message"]["content"] or "")
             usage = payload.get("usage") or {}
             return Generation(text, int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0)), latency)
         raise RuntimeError(f"the endpoint rejected every request mode: {last_error}")
+
+
+_THINK = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def strip_thinking(text: str) -> str:
+    """Remove a reasoning model's <think>...</think> block(s); an unclosed block is removed to its end."""
+
+    text = _THINK.sub("", text)
+    if "<think>" in text:
+        text = text[: text.index("<think>")]
+    return text.strip()
 
 
 class TransformersGenerator:
@@ -144,7 +164,7 @@ class TransformersGenerator:
             with torch.no_grad():
                 output = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens, do_sample=False)
             generated = output[0][inputs["input_ids"].shape[1]:]
-            text = self.tokenizer.decode(generated, skip_special_tokens=True)
+            text = strip_thinking(self.tokenizer.decode(generated, skip_special_tokens=True))
             tokens_out = int(generated.shape[0])
         return Generation(text, int(inputs["input_ids"].shape[1]), tokens_out, (time.perf_counter() - started) * 1000)
 

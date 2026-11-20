@@ -260,7 +260,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-q", "--quiet", action="store_true")
     planner_options = parser.add_argument_group("planner", "options of the natural-language planner")
     planner_options.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
-    planner_options.add_argument("--endpoint", default=None, help="an OpenAI-compatible chat endpoint (e.g. vLLM: http://localhost:8000/v1); without it the model runs in-process with transformers")
+    planner_options.add_argument("--endpoint", default=None, help="an OpenAI-compatible chat endpoint (vLLM, or a hosted API such as https://openai.rc.asu.edu/v1); without it the model runs in-process with transformers")
+    planner_options.add_argument("--api-key", default=None, help="the endpoint's API key (default: $OPENAI_API_KEY)")
+    planner_options.add_argument("--llm-timeout", type=float, default=180.0, help="seconds to wait for one model answer")
+    planner_options.add_argument("--thinking", action="store_true", help="let a reasoning model (Qwen3...) think before answering (default: off, /no_think)")
     planner_options.add_argument("--schema", choices=["full", "descriptions", "retrieved"], default="full", help="the schema representation shown to the model (RQ3)")
     planner_options.add_argument("--repairs", type=int, default=2)
     planner_options.add_argument("--top-k", type=int, default=12, help="entries the SSSI keeps for the retrieved representation")
@@ -291,7 +294,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             from planner.llm import OpenAICompatibleGenerator, TransformersGenerator
 
-            generator = OpenAICompatibleGenerator(args.model, base_url=args.endpoint) if args.endpoint else TransformersGenerator(args.model)
+            generator = (
+                OpenAICompatibleGenerator(args.model, base_url=args.endpoint, api_key=args.api_key, timeout=args.llm_timeout, thinking=args.thinking)
+                if args.endpoint else TransformersGenerator(args.model)
+            )
             if args.system == "planner":
                 from planner import NaturalLanguagePlanner, PlannerConfig
                 from planner.sssi import SchemaIndex

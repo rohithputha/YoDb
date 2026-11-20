@@ -271,6 +271,7 @@ class EndpointTests(unittest.TestCase):
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 seen.append("guided_json" if "guided_json" in body else (body.get("response_format") or {}).get("type", "none"))
+                assert body["messages"][-1]["content"].endswith("/no_think")
                 if (body.get("response_format") or {}).get("type") == "json_schema":
                     self.send_response(400)
                     self.end_headers()
@@ -295,3 +296,10 @@ class EndpointTests(unittest.TestCase):
             self.assertEqual(seen, ["json_schema", "guided_json", "guided_json"])
         finally:
             server.shutdown()
+
+    def test_thinking_blocks_are_removed_and_the_soft_switch_is_added(self) -> None:
+        from planner.llm import strip_thinking
+
+        self.assertEqual(strip_thinking('<think>\nlet me see {a: 1}\n</think>\n{"plan": []}'), '{"plan": []}')
+        self.assertEqual(strip_thinking('{"ok": 1}'), '{"ok": 1}')
+        self.assertEqual(strip_thinking('{"ok": 1}<think>unfinished'), '{"ok": 1}')

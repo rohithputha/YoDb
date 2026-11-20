@@ -124,12 +124,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", default="held_out", choices=["held_out", "tune", "all"])
     parser.add_argument("--endpoint", default=None, help="the model endpoint for the planner and the baselines")
     parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
+    parser.add_argument("--api-key", default=None, help="the endpoint's API key (default: $OPENAI_API_KEY)")
+    parser.add_argument("--thinking", action="store_true")
     parser.add_argument("--repeat", type=int, default=5, help="timed runs for E2")
     parser.add_argument("--dsn", default=os.environ.get("YODB_CONN_YELP"))
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     split = None if args.split == "all" else args.split
-    common = ["--questions", str(args.questions), "--model", args.model] + (["--split", split] if split else []) + (["--endpoint", args.endpoint] if args.endpoint else []) + (["--dsn", args.dsn] if args.dsn else [])
+    common = (
+        ["--questions", str(args.questions), "--model", args.model] + (["--split", split] if split else [])
+        + (["--endpoint", args.endpoint] if args.endpoint else []) + (["--api-key", args.api_key] if args.api_key else [])
+        + (["--thinking"] if args.thinking else []) + (["--dsn", args.dsn] if args.dsn else [])
+    )
     resources_path = args.out / "resources.json"
     resources = json.loads(resources_path.read_text()) if resources_path.is_file() else {}
     runs: dict[str, dict[str, Path]] = {"E1": {}, "E2": {}, "E3": {}, "Ablations": {}}
