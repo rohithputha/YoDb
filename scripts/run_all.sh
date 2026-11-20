@@ -48,7 +48,24 @@ if [ ! -f .env ]; then
     echo "run_all.sh: wrote .env from .env.example; put OPENAI_API_KEY and YELP_DATA in it and rerun." >&2
     exit 1
 fi
-set -a; . ./.env; set +a
+# Read KEY=VALUE lines of a .env file as the Python side does (a value may contain spaces; quotes around it are removed;
+# a value already in the environment wins).  `source` would split an unquoted value with spaces into several assignments.
+load_env() {
+    [ -f "$1" ] || return 0
+    local line key value
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        case "$line" in ''|'#'*) continue ;; esac
+        [[ "$line" == *=* ]] || continue
+        line="${line#export }"
+        key="${line%%=*}"; value="${line#*=}"
+        key="${key//[[:space:]]/}"
+        [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        case "$value" in \"*\") value="${value#\"}"; value="${value%\"}" ;; \'*\') value="${value#\'}"; value="${value%\'}" ;; esac
+        if [ -z "${!key:-}" ]; then export "$key=$value"; fi
+    done <"$1"
+}
+load_env .env
 if [ -z "${OPENAI_API_KEY:-}" ] || [ "$OPENAI_API_KEY" = "<your ASU key>" ]; then
     echo "run_all.sh: OPENAI_API_KEY is not set in .env (the model endpoint's key)." >&2
     exit 1

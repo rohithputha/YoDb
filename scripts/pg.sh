@@ -18,7 +18,24 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-[ -f "$ROOT/.env" ] && set -a && . "$ROOT/.env" && set +a
+# Read KEY=VALUE lines of a .env file as the Python side does (a value may contain spaces; quotes around it are removed;
+# a value already in the environment wins).  `source` would split an unquoted value with spaces into several assignments.
+load_env() {
+    [ -f "$1" ] || return 0
+    local line key value
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        case "$line" in ''|'#'*) continue ;; esac
+        [[ "$line" == *=* ]] || continue
+        line="${line#export }"
+        key="${line%%=*}"; value="${line#*=}"
+        key="${key//[[:space:]]/}"
+        [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        case "$value" in \"*\") value="${value#\"}"; value="${value%\"}" ;; \'*\') value="${value#\'}"; value="${value%\'}" ;; esac
+        if [ -z "${!key:-}" ]; then export "$key=$value"; fi
+    done <"$1"
+}
+load_env "$ROOT/.env"
 
 PORT="${YODB_PG_PORT:-55434}"
 PASSWORD="${YODB_PG_PASSWORD:-postgres}"
