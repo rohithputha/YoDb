@@ -233,7 +233,12 @@ def run(system: System, questions: Sequence[Mapping[str, Any]], out: Path, *, re
     with out.open("w", encoding="utf-8") as handle:
         for index, question in enumerate(questions, start=1):
             for repetition in range(repeat):
-                prediction = system.answer(question)
+                try:
+                    prediction = system.answer(question)
+                except Exception as error:                      # a crashed system call is this question's failure, not the run's
+                    prediction = Prediction(id=question["id"], error=f"system_error:{type(error).__name__}", plan_valid=False)
+                    if not quiet:
+                        print(f"    {question['id']}: {type(error).__name__}: {str(error)[:200]}", flush=True)
                 prediction.id = question["id"]
                 prediction.run = repetition
                 predictions.append(prediction)
@@ -277,12 +282,13 @@ def main(argv: list[str] | None = None) -> int:
     planner_options.add_argument("--model", default=os.environ.get("YODB_LLM_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"), help="the model (default: $YODB_LLM_MODEL)")
     planner_options.add_argument("--endpoint", default=os.environ.get("YODB_LLM_ENDPOINT") or None, help="an OpenAI-compatible chat endpoint (vLLM, or a hosted API such as https://openai.rc.asu.edu/v1); without it the model runs in-process with transformers")
     planner_options.add_argument("--api-key", default=None, help="the endpoint's API key (default: $OPENAI_API_KEY)")
-    planner_options.add_argument("--llm-timeout", type=float, default=180.0, help="seconds to wait for one model answer")
+    planner_options.add_argument("--llm-timeout", type=float, default=900.0, help="seconds to wait for one model answer (a baseline listing 500 ids can take minutes)")
     planner_options.add_argument("--thinking", action="store_true", help="let a reasoning model (Qwen3...) think before answering (default: off, /no_think)")
     planner_options.add_argument("--schema", choices=["full", "descriptions", "retrieved"], default="full", help="the schema representation shown to the model (RQ3)")
     planner_options.add_argument("--repairs", type=int, default=2)
     planner_options.add_argument("--top-k", type=int, default=12, help="entries the SSSI keeps for the retrieved representation")
-    planner_options.add_argument("--no-grammar", action="store_true", help="do not constrain decoding with the output JSON Schema")
+    planner_options.add_argument("--grammar", action="store_true", help="constrain decoding with the output JSON Schema (the ablation; off by default)")
+    planner_options.add_argument("--no-grammar", action="store_true", help=argparse.SUPPRESS)
     planner_options.add_argument("--no-examples", action="store_true")
     baseline_options = parser.add_argument_group("baselines", "options of the tool agent and the router")
     baseline_options.add_argument("--dsn", default=os.environ.get("YODB_CONN_YELP"), help="the read-only connection the baselines use directly (default: $YODB_CONN_YELP)")
@@ -318,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
                 from planner.sssi import SchemaIndex
 
                 index = SchemaIndex(db.catalog, embedder) if args.schema == "retrieved" else None
-                config = PlannerConfig(representation=args.schema, repairs=args.repairs, grammar=not args.no_grammar, top_k=args.top_k,
+                config = PlannerConfig(representation=args.schema, repairs=args.repairs, grammar=args.grammar, top_k=args.top_k,
                                        examples=not args.no_examples, timeout=args.timeout)
                 system = NaturalLanguagePlanner(db, generator, config, index=index)
             else:
@@ -330,11 +336,11 @@ def main(argv: list[str] | None = None) -> int:
                 if args.system == "tool-agent":
                     from baselines.tool_agent import ToolAgent
 
-                    system = ToolAgent(stores, generator, max_turns=args.max_turns, grammar=not args.no_grammar)
+                    system = ToolAgent(stores, generator, max_turns=args.max_turns, grammar=args.grammar)
                 else:
                     from baselines.router import RouterSystem
 
-                    system = RouterSystem(stores, generator, grammar=not args.no_grammar)
+                    system = RouterSystem(stores, generator, grammar=args.grammar)
             out = args.out or HERE / "runs" / f"{system.name}{'-sequential' if args.sequential else ''}.jsonl"
         predictions = run(system, questions, out, repeat=args.repeat, warm_up=args.warm_up, quiet=args.quiet, verbose=args.verbose)
     print(f"wrote {len(predictions)} predictions to {out}")

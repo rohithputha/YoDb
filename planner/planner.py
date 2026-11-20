@@ -35,7 +35,10 @@ _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 class PlannerConfig:
     representation: str = "full"          # full | descriptions | retrieved
     repairs: int = 2                      # most repair rounds after the first attempt
-    grammar: bool = True                  # hand the output JSON Schema to the generator
+    # Hand the output JSON Schema to the generator as a decoding grammar.  Off by default: on the vLLM behind the
+    # evaluation it made the model emit structurally minimal plans (no traverse, no page), so validation + repair
+    # does the work instead; "on" is the ablation.
+    grammar: bool = False
     top_k: int = 12                       # entries the SSSI keeps (retrieved)
     examples: bool = True                 # include the few-shot examples
     timeout: float = 60.0                 # per executed query

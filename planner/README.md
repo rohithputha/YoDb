@@ -44,7 +44,8 @@ PYTHONPATH=src python benchmark/score.py benchmark/runs/planner-*.jsonl benchmar
 ```
 
 Without an endpoint the model runs in-process with transformers (`--model`, 4-bit when
-`bitsandbytes` is installed; add `outlines` for the grammar). `--no-grammar` and `--repairs 0`
+`bitsandbytes` is installed; add `outlines` for the grammar). `--grammar` (constrained decoding, off by default: on the evaluation's vLLM it made the
+model emit structurally minimal plans) and `--repairs 0`
 are the ablations of RQ1's typed-validation story; `--schema` is RQ3; `--top-k` sizes the
 retrieved fragment.
 

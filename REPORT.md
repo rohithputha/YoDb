@@ -73,7 +73,9 @@ shows the physical plan, which filters each source applied, the join strategy an
 Qwen2.5-Coder-7B-Instruct (temperature 0) receives the query-language guide YoDb gives agents, the
 schema in one of the three representations, three examples, and the question, and must return one
 JSON object: a plan with the field whose values answer the question and the source kinds used, or a
-refusal with a code. Decoding is constrained by the JSON Schema of that object (vLLM `guided_json`).
+refusal with a code. The JSON Schema of that object can constrain decoding (vLLM structured outputs), but on the evaluation
+stack this made the model emit structurally minimal plans (no traverse step, no page), so the default is
+unconstrained JSON with YoDb's validation and repair doing the work; constrained decoding is an ablation.
 Every step is bound and planned by YoDb before anything runs; the coded error is returned to the
 model verbatim for at most two repairs. A plan that still fails is recorded with that error and no
 native query is sent.

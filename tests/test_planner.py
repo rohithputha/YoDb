@@ -207,8 +207,8 @@ class LoopTests(unittest.TestCase):
                 seen.append(json_schema)
                 return super().generate(messages, json_schema=json_schema)
 
-        self.planner(Recording([US_TICKETS])).plan("q")
-        self.planner(Recording([US_TICKETS]), grammar=False).plan("q")
+        self.planner(Recording([US_TICKETS]), grammar=True).plan("q")
+        self.planner(Recording([US_TICKETS])).plan("q")                     # off by default (the ablation turns it on)
         self.assertIs(seen[0], OUTPUT)
         self.assertIsNone(seen[1])
 

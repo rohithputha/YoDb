@@ -47,7 +47,7 @@ E3_SYSTEMS = (
     ("planner-retrieved", ["planner", "--schema", "retrieved"]),
 )
 ABLATIONS = (
-    ("planner-full-nogrammar", ["planner", "--schema", "full", "--no-grammar"]),
+    ("planner-full-grammar", ["planner", "--schema", "full", "--grammar"]),
     ("planner-full-norepair", ["planner", "--schema", "full", "--repairs", "0"]),
 )
 
