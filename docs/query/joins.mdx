@@ -67,8 +67,16 @@ The join adds one step:
 
 YoDb starts from the side expected to return fewer rows. With statistics it compares the two sides'
 estimates; without them, the side with more filters drives. A left join always starts from the starting
-dataset, because every one of its rows must appear. `yodb explain` shows the join, both sides, the key
-and which side drives:
+dataset, because every one of its rows must appear.
+
+When **both sides carry a filter of their own**, the two reads do not depend on each other: an
+*independent* join reads them at the same time (each on its own, under the join's bounds) and matches
+afterwards, instead of probing the second side with the first side's keys. With statistics, YoDb does
+this when both sides are expected to fit (`JoinPolicy(parallel="auto")`, the default); `parallel="always"`
+trusts the filters, `parallel="never"` keeps every join sequential (the forced-sequential ablation), and
+`FederatedExecutionPolicy(concurrency=1)` runs even an independent join one side after the other. The
+same applies to a relationship stored as graph edges: both sides are read at once and the edges say which
+rows match. `yodb explain` shows the join, both sides, the key, which side drives and the strategy:
 
 ```text
 hash_join  @coordinator  fields=id,name,... on customer.id = ticket.customer_id

@@ -83,7 +83,9 @@ The sections below give the detail.
   where each condition alone matches more than 10,000 rows of its own source.
 - `contains` and `starts_with` run at YoDb, not in the database, so the rows they
   filter must fit the guards.
-- Reads run one after another; a query does not use concurrent reads.
+- Reads that depend on each other run one after another. The sides of an independent join, and the
+  reads of an assembly that need no learned IDs, run at the same time (up to `FederatedExecutionPolicy.concurrency`
+  threads, 4 by default; 1 for the sequential ablation).
 - Tested to 1,000,000 rows in the largest table (with the guards doing their
   job), not beyond.
 

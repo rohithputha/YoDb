@@ -28,10 +28,17 @@ class JoinPolicy:
     maximum_driver_rows: int = 10_000        # rows the driving side may produce
     maximum_probe_rows: int = 50_000         # rows all probing batches together may produce
     maximum_joined_rows: int = 50_000        # rows the join may hold before ordering and paging
+    # When both sides are filtered on their own, they can be read at the same time and matched afterwards
+    # (an *independent* join) instead of probing the second with the first's keys.  "auto" does so when
+    # statistics expect both sides to fit their guards; "always" whenever both sides have a filter; "never"
+    # keeps every join sequential (the forced-sequential ablation).
+    parallel: Literal["auto", "always", "never"] = "auto"
 
     def __post_init__(self) -> None:
         if min(self.batch_size, self.maximum_driver_rows, self.maximum_probe_rows, self.maximum_joined_rows) < 1:
             raise ValueError("join limits must be positive")
+        if self.parallel not in ("auto", "always", "never"):
+            raise ValueError("parallel must be 'auto', 'always' or 'never'")
 
 
 @dataclass(frozen=True)
@@ -62,17 +69,23 @@ class HashJoin(PhysicalNode):
     key_description: str
     # The probing side for a real batch of keys and a row budget.  Not part of equality or the fingerprint.
     probe_for: Callable[[Sequence[object], int], PhysicalNode] = field(compare=False, repr=False, default=None)  # type: ignore[assignment]
+    # The other side read on its own, concurrently with the driver (an independent join); None: probe by keys.
+    independent: PhysicalNode | None = None
 
     @property
     def columns(self) -> tuple[str, ...]:
         return (*self.left_columns, *(f"{self.alias}.{name}" for name in self.right_columns))
 
+    @property
+    def strategy(self) -> str:
+        return "parallel" if self.independent is not None else "probe"
+
     def inputs(self) -> tuple[PhysicalNode, ...]:
-        return (self.driver, self.probe)
+        return (self.driver, self.probe if self.independent is None else self.independent)
 
     def with_inputs(self, inputs: tuple[PhysicalNode, ...]) -> PhysicalNode:
-        driver, probe = inputs
-        return replace(self, driver=driver, probe=probe)
+        driver, other = inputs
+        return replace(self, driver=driver, **({"probe": other} if self.independent is None else {"independent": other}))
 
     def shape(self) -> dict[str, object]:
         return {
@@ -83,24 +96,30 @@ class HashJoin(PhysicalNode):
             "order": [(o.column, o.descending) for o in self.order],
             "first": self.first,
             "batch_size": self.policy.batch_size,
+            "strategy": self.strategy,
             "driver_plan": self.driver.shape(),
-            "probe_plan": self.probe.shape(),
+            "probe_plan": (self.probe if self.independent is None else self.independent).shape(),
         }
 
     def describe(self) -> PlanExplanationNode:
         probe_side = "right" if self.driver_side == "left" else "left"
+        how = (
+            f"both sides are read at the same time (the {probe_side} side on its own, not by keys), then matched"
+            if self.independent is not None
+            else f"driving side ({self.driver_side}) is planned first; the probing side ({probe_side}) is shown for one "
+            f"batch and runs once per batch of up to {self.policy.batch_size} keys"
+        )
         return PlanExplanationNode(
             kind="hash_join",
             location="coordinator",
             fields=self.columns,
             ordering=tuple(f"{o.column} {'desc' if o.descending else 'asc'}" for o in self.order),
             limit=self.first,
-            key_transfer_max_keys=self.policy.batch_size,
+            key_transfer_max_keys=None if self.independent is not None else self.policy.batch_size,
             detail=(
-                f"relationship={self.relationship} as={self.alias} kind={'left' if self.optional else 'inner'}",
+                f"relationship={self.relationship} as={self.alias} kind={'left' if self.optional else 'inner'} strategy={self.strategy}",
                 f"on {self.key_description}",
-                f"driving side ({self.driver_side}) is planned first; the probing side ({probe_side}) is shown for one "
-                f"batch and runs once per batch of up to {self.policy.batch_size} keys",
+                how,
             ),
         )
 
@@ -181,17 +200,23 @@ class EdgeJoin(PhysicalNode):
     first: int
     policy: JoinPolicy
     probe_for: Callable[[Sequence[object], int], PhysicalNode] = field(compare=False, repr=False, default=None)  # type: ignore[assignment]
+    # The other side read on its own, concurrently with the driver; the edges then say which rows match.
+    independent: PhysicalNode | None = None
 
     @property
     def columns(self) -> tuple[str, ...]:
         return (*self.left_columns, *(f"{self.alias}.{name}" for name in self.right_columns))
 
+    @property
+    def strategy(self) -> str:
+        return "parallel" if self.independent is not None else "probe"
+
     def inputs(self) -> tuple[PhysicalNode, ...]:
-        return (self.driver, self.edges, self.probe)
+        return (self.driver, self.edges, self.probe if self.independent is None else self.independent)
 
     def with_inputs(self, inputs: tuple[PhysicalNode, ...]) -> PhysicalNode:
-        driver, edges, probe = inputs
-        return replace(self, driver=driver, edges=edges, probe=probe)
+        driver, edges, other = inputs
+        return replace(self, driver=driver, edges=edges, **({"probe": other} if self.independent is None else {"independent": other}))
 
     def shape(self) -> dict[str, object]:
         return {
@@ -202,13 +227,21 @@ class EdgeJoin(PhysicalNode):
             "order": [(o.column, o.descending) for o in self.order],
             "first": self.first,
             "batch_size": self.policy.batch_size,
+            "strategy": self.strategy,
             "driver_plan": self.driver.shape(),
             "edges": self.edges.shape(),
-            "probe_plan": self.probe.shape(),
+            "probe_plan": (self.probe if self.independent is None else self.independent).shape(),
         }
 
     def describe(self) -> PlanExplanationNode:
         probe_side = "right" if self.driver_side == "left" else "left"
+        how = (
+            f"both sides are read at the same time (the {probe_side} side on its own); the driver's IDs then go to the "
+            f"graph in batches of up to {self.policy.batch_size} and the edges say which rows match"
+            if self.independent is not None
+            else f"driving side ({self.driver_side}) runs first; its IDs go to the graph in batches of up to "
+            f"{self.policy.batch_size}; the other side ({probe_side}) is read for the IDs the edges reach"
+        )
         return PlanExplanationNode(
             kind="edge_join",
             location="coordinator",
@@ -217,10 +250,9 @@ class EdgeJoin(PhysicalNode):
             limit=self.first,
             key_transfer_max_keys=self.policy.batch_size,
             detail=(
-                f"relationship={self.relationship} as={self.alias} kind={'left' if self.optional else 'inner'}",
+                f"relationship={self.relationship} as={self.alias} kind={'left' if self.optional else 'inner'} strategy={self.strategy}",
                 f"over graph edges {self.edges.edge_type} in graph {self.edges.graph} (source {self.edges.source_name})",
-                f"driving side ({self.driver_side}) runs first; its IDs go to the graph in batches of up to "
-                f"{self.policy.batch_size}; the other side ({probe_side}) is read for the IDs the edges reach",
+                how,
             ),
         )
 

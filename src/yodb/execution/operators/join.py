@@ -9,7 +9,7 @@ from ...errors import ErrorCode, QueryExecutionError
 from ...planning import EdgeJoin, HashJoin
 from ...query.models import SortDirection
 from ..contracts import LogicalRow
-from .base import ExecutionContext, Run, fail
+from .base import ExecutionContext, Run, fail, run_concurrently
 from .rows import compare_rows
 
 
@@ -36,11 +36,14 @@ def execute(ctx: ExecutionContext, node: HashJoin, run: Run) -> tuple[LogicalRow
     """
 
     policy = node.policy
-    driver_rows = _driver(ctx, node, run)
-    keys = list(dict.fromkeys(row[node.driver_key] for row in driver_rows if row.get(node.driver_key) is not None))
-    probe_rows: list[LogicalRow] = []
-    for start in range(0, len(keys), policy.batch_size):
-        _probe(ctx, node, keys[start:start + policy.batch_size], probe_rows, run)
+    if node.independent is not None:
+        driver_rows, probe_rows = _both_sides(ctx, node, run)
+    else:
+        driver_rows = _driver(ctx, node, run)
+        keys = list(dict.fromkeys(row[node.driver_key] for row in driver_rows if row.get(node.driver_key) is not None))
+        probe_rows = []
+        for start in range(0, len(keys), policy.batch_size):
+            _probe(ctx, node, keys[start:start + policy.batch_size], probe_rows, run)
     by_key: dict[object, list[LogicalRow]] = {}
     for row in probe_rows:
         by_key.setdefault(row[node.probe_key], []).append(row)
@@ -58,7 +61,11 @@ def execute_edges(ctx: ExecutionContext, node: EdgeJoin, run: Run) -> tuple[Logi
     the edges reach (in key batches, under the same guards as a hash join)."""
 
     policy = node.policy
-    driver_rows = _driver(ctx, node, run)
+    other_rows: list[LogicalRow] | None = None
+    if node.independent is not None:
+        driver_rows, other_rows = _both_sides(ctx, node, run)
+    else:
+        driver_rows = _driver(ctx, node, run)
     ids = list(dict.fromkeys(str(row["id"]) for row in driver_rows if row.get("id") is not None))
     pairs: dict[tuple[str, str], None] = {}             # (driver ID, other ID), each once, in edge order
     for start in range(0, len(ids), policy.batch_size):
@@ -71,11 +78,12 @@ def execute_edges(ctx: ExecutionContext, node: EdgeJoin, run: Run) -> tuple[Logi
                 ErrorCode.QUERY_COORDINATOR_LIMIT_EXCEEDED,
                 f"The relationship reaches more than {policy.maximum_probe_rows} rows; add a filter to one side of the join.",
             )
-    reached = list(dict.fromkeys(other for _, other in pairs))
-    probe_rows: list[LogicalRow] = []
-    for start in range(0, len(reached), policy.batch_size):
-        _probe(ctx, node, reached[start:start + policy.batch_size], probe_rows, run)
-    by_id = {str(row["id"]): row for row in probe_rows if row.get("id") is not None}
+    if other_rows is None:
+        reached = list(dict.fromkeys(other for _, other in pairs))
+        other_rows = []
+        for start in range(0, len(reached), policy.batch_size):
+            _probe(ctx, node, reached[start:start + policy.batch_size], other_rows, run)
+    by_id = {str(row["id"]): row for row in other_rows if row.get("id") is not None}
     others: dict[str, list[str]] = {}
     for mine, other in pairs:
         others.setdefault(mine, []).append(other)
@@ -87,6 +95,25 @@ def execute_edges(ctx: ExecutionContext, node: EdgeJoin, run: Run) -> tuple[Logi
         return tuple(row for row in found if row is not None)       # an edge to a row the step's filter dropped: no match
 
     return _finish(node, driver_rows, matches_of, run)
+
+
+def _both_sides(ctx: ExecutionContext, node, run: Run) -> tuple[tuple[LogicalRow, ...], list[LogicalRow]]:
+    """An independent join: the driver and the other side run at the same time, each as its own plan
+    with its own trace, then the traces are merged and the join's bounds applied to each side."""
+
+    driver_rows, other_rows = run_concurrently(ctx, (node.driver, node.independent), run)
+    if len(driver_rows) > node.policy.maximum_driver_rows:
+        fail(
+            ErrorCode.QUERY_ROW_LIMIT_EXCEEDED,
+            f"The {node.driver_side} side of the join produced more than {node.policy.maximum_driver_rows} rows; "
+            "add a filter to one side of the join.",
+        )
+    if len(other_rows) > node.policy.maximum_probe_rows:
+        fail(
+            ErrorCode.QUERY_COORDINATOR_LIMIT_EXCEEDED,
+            f"The other side of the join produced more than {node.policy.maximum_probe_rows} rows; add a filter to one side of the join.",
+        )
+    return driver_rows, list(other_rows)
 
 
 def _driver(ctx: ExecutionContext, node, run: Run) -> tuple[LogicalRow, ...]:

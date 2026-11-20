@@ -366,7 +366,7 @@ class DrivingSideTests(unittest.TestCase):
 
     def test_the_driving_side_is_read_first_and_the_probing_side_only_for_its_keys(self) -> None:
         world = shop_world()
-        db = engine(world, statistics=counts(1_000_000, 100))
+        db = engine(world, statistics=counts(1_000_000, 100), join_policy=JoinPolicy(parallel="never"))   # the probing strategy
         db.execute(query(select=("name",), where=p("country", "eq", "US"), steps=traverse(where=p("status", "eq", "open"))))
         self.assertEqual([q.source_name for q in world.queries][:1], ["desk"])                     # tickets first
         crm = world.reads_of("crm")

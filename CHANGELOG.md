@@ -24,6 +24,10 @@
 - `YoDb.similar_enabled`, `YoDb.embedding_model`, `YoDb.similar_fields()`; `describe()` and the MCP
   `describe_catalog` mark a field `"similar": true` when its embeddings are in the configured model's space.
 - Operators `traverse` (edge_join) and `similarity_search` (ranked_read, ranked_store) are implemented.
+- Concurrent reads. A join whose two sides each carry a filter is an *independent* join: both sides are read at
+  the same time and matched afterwards (`JoinPolicy.parallel`: `auto` with statistics saying both fit, `always`,
+  `never`), also over graph edges; the reads of a record assembly that need no learned IDs run together.
+  `FederatedExecutionPolicy.concurrency` (default 4; 1 is the sequential ablation). Results never change.
 - End-to-end suite `tests/e2e/age` with a Dockerfile (PostgreSQL 16 + Apache AGE + pgvector).
 - `examples/yelp`: the Yelp Open Dataset as a data layer. A deterministic sampler (seed + record IDs),
   a loader (tables by COPY, review embeddings with the shipped provider into a pgvector column with an

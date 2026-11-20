@@ -240,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--warm-up", action="store_true")
     parser.add_argument("--embedding-model", default="BAAI/bge-small-en-v1.5")
     parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument("--sequential", action="store_true", help="forced-sequential execution (joins probe by keys, one read at a time): the RQ2 ablation")
     parser.add_argument("-q", "--quiet", action="store_true")
     planner_options = parser.add_argument_group("planner", "options of the natural-language planner")
     planner_options.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
@@ -255,11 +256,17 @@ def main(argv: list[str] | None = None) -> int:
     from yodb.embeddings import FastEmbedProvider
 
     questions = load_questions(args.questions, split=args.split, classes=set(args.classes) if args.classes else None, only=args.only)
-    out = args.out or HERE / "runs" / f"{args.system}.jsonl"
+    out = args.out or HERE / "runs" / f"{args.system}{'-sequential' if args.sequential else ''}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     needs_embedder = args.system == "planner" or any("similar" in json.dumps(q["plan"]) for q in questions)
     embedder = FastEmbedProvider(args.embedding_model) if needs_embedder else None
-    with yodb.connect(args.catalog, embedder=embedder) as db:
+    from yodb.execution.operators import FederatedExecutionPolicy
+    from yodb.planning import JoinPolicy
+
+    policies = (
+        {"join_policy": JoinPolicy(parallel="never"), "execution_policy": FederatedExecutionPolicy(concurrency=1)} if args.sequential else {}
+    )
+    with yodb.connect(args.catalog, embedder=embedder, **policies) as db:
         if args.system == "gold":
             system: System = GoldPlanSystem(db, timeout=args.timeout)
         else:
@@ -272,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
             config = PlannerConfig(representation=args.schema, repairs=args.repairs, grammar=not args.no_grammar, top_k=args.top_k,
                                    examples=not args.no_examples, timeout=args.timeout)
             system = NaturalLanguagePlanner(db, generator, config, index=index)
-            out = args.out or HERE / "runs" / f"{system.name}.jsonl"
+            out = args.out or HERE / "runs" / f"{system.name}{'-sequential' if args.sequential else ''}.jsonl"
         predictions = run(system, questions, out, repeat=args.repeat, warm_up=args.warm_up, quiet=args.quiet)
     print(f"wrote {len(predictions)} predictions to {out}")
     return 0

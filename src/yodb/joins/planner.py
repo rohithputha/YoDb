@@ -129,6 +129,17 @@ class JoinPlanner:
         sample = [_SAMPLE[catalog.datasets[probe_dataset].fields[probe_key].type]]
         probe_template = probe_for(sample, self._policy.maximum_probe_rows + 1)
         driver_plan, driver_key = (left_driver, left_key) if driver == "left" else (right_driver, right_key)
+        other_plan = right_driver if driver == "left" else left_driver
+        independent, parallel_notes = self._independent(step, left_where, right_where, driver_plan, other_plan)
+        notes = (*notes, *parallel_notes)
+        if independent is not None:
+            # the other side, read whole (under the probing-side guard) at the same time as the driver
+            other_query = (
+                sub(right_dataset, right_select, right_where, right_key, None, self._policy.maximum_probe_rows + 1, right_constraints)
+                if driver == "left"
+                else sub(root_dataset, left_select, left_where, left_key, None, self._policy.maximum_probe_rows + 1, left_constraints)
+            )
+            independent = self._plan(other_query, active, "traverse[0]." if driver == "left" else "").plan
 
         common = dict(
             driver=driver_plan.plan,
@@ -146,6 +157,7 @@ class JoinPlanner:
             first=min(first, maximum_results) if maximum_results else first,
             policy=self._policy,
             probe_for=probe_for,
+            independent=independent,
         )
         if link.edge is None:
             node: PhysicalNode = HashJoin(
@@ -206,6 +218,29 @@ class JoinPlanner:
             if location is not None and location.startswith(("from", "where", "select", "constraints")):
                 location = f"{prefix}{location}" if prefix else location
             raise QueryError(replace_detail(detail, location)) from error
+
+    def _independent(self, step: Traversal, left_where, right_where, driver: PlannedQuery, other: PlannedQuery) -> tuple[bool | None, tuple[str, ...]]:
+        """Whether the two sides are read at the same time (each on its own) rather than the second by the first's keys.
+
+        Only when both sides carry a filter (an unfiltered side would be a whole dataset) and the join is inner.
+        ``auto`` also wants statistics saying each side fits its guard; ``always`` trusts the filters; ``never``
+        is the forced-sequential ablation.
+        """
+
+        mode = self._policy.parallel
+        if mode == "never":
+            return None, ("strategy_join=sequential", "reason=parallel joins are off")
+        if step.optional or left_where is None or right_where is None:
+            return None, ("strategy_join=sequential", "reason=a side has no filter of its own" if not step.optional else "reason=a left join probes by keys")
+        if mode == "always":
+            return True, ("strategy_join=parallel", "reason=both sides are filtered (parallel=always)")
+        statistics = getattr(self._planner, "statistics", None)
+        driver_rows, other_rows = _estimate(driver, statistics), _estimate(other, statistics)
+        if driver_rows is None or other_rows is None:
+            return None, ("strategy_join=sequential", "reason=no statistics to tell whether both sides fit on their own")
+        if driver_rows <= self._policy.maximum_driver_rows and other_rows <= self._policy.maximum_probe_rows:
+            return True, ("strategy_join=parallel", f"reason=both sides are expected to fit ({driver_rows:.0f} and {other_rows:.0f} rows)")
+        return None, ("strategy_join=sequential", f"reason=a side is expected too large to read on its own ({driver_rows:.0f} and {other_rows:.0f} rows)")
 
     def _choose_driver(self, step: Traversal, left: PlannedQuery, right: PlannedQuery, left_where, right_where) -> tuple[str, tuple[str, ...]]:
         """Which side to run first: the one expected to produce fewer rows (a left join always starts at the root)."""

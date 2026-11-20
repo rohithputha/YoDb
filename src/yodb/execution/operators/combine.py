@@ -7,7 +7,7 @@ from dataclasses import replace
 from ...errors import ErrorCode
 from ...planning import RecordAssembly, RemoteScan, StepRole
 from ..contracts import LogicalRow
-from .base import ExecutionContext, Run, fail
+from .base import ExecutionContext, Run, fail, run_concurrently
 
 
 def execute(ctx: ExecutionContext, node: RecordAssembly, run: Run) -> tuple[LogicalRow, ...]:
@@ -39,17 +39,21 @@ def execute(ctx: ExecutionContext, node: RecordAssembly, run: Run) -> tuple[Logi
     required_ids: list[set[object]] = []
     enrichment: list[tuple[RemoteScan, tuple[LogicalRow, ...]]] = []
     anchor_rows: tuple[LogicalRow, ...] = ()
+    ready = _independent_reads(ctx, node, scans, required_total, run)
     for step in node.schedule:
         scan = scans[step.source_name]
         narrowing = step.role is not StepRole.OPTIONAL
-        if step.role is StepRole.ANCHOR and scan.vector_search is not None:
-            safe = required_done == required_total and (
-                required_total == 0 or _can_restrict(scan, keys if step.restrict else None, node)
-            )
-            if not safe:
-                run.fell_back = True
-                scan = replace(scan, vector_search=None, limit=None, maximum_rows=scan.vector_search.fallback_maximum_rows)
-        rows = _read(ctx, scan, keys if step.restrict else None, node.maximum_transfer_keys, node.maximum_key_batches, run)
+        if step.source_name in ready:
+            rows = ready[step.source_name]                 # read already, at the same time as the other independent ones
+        else:
+            if step.role is StepRole.ANCHOR and scan.vector_search is not None:
+                safe = required_done == required_total and (
+                    required_total == 0 or _can_restrict(scan, keys if step.restrict else None, node)
+                )
+                if not safe:
+                    run.fell_back = True
+                    scan = replace(scan, vector_search=None, limit=None, maximum_rows=scan.vector_search.fallback_maximum_rows)
+            rows = _read(ctx, scan, keys if step.restrict else None, node.maximum_transfer_keys, node.maximum_key_batches, run)
         if step.role is StepRole.ANCHOR:
             anchor_rows = rows
         else:
@@ -75,6 +79,28 @@ def execute(ctx: ExecutionContext, node: RecordAssembly, run: Run) -> tuple[Logi
                 # The identity is a join key, never a competing field value.
                 target.update((name, value) for name, value in row.items() if name != "id")
     return tuple(record for logical_id, record in records.items() if all(logical_id in ids for ids in required_ids))
+
+
+def _independent_reads(ctx: ExecutionContext, node: RecordAssembly, scans, required_total: int, run: Run) -> dict[str, tuple[LogicalRow, ...]]:
+    """The reads that depend on no learned IDs, done at the same time: the first step of the schedule and every
+    step the plan reads unrestricted.  A ranked anchor read waits for the required contributors, as before.
+    With one such read, or ``concurrency`` 1, nothing changes (the schedule runs as it is)."""
+
+    independent = []
+    for index, step in enumerate(node.schedule):
+        scan = scans[step.source_name]
+        if step.role is StepRole.ANCHOR and scan.vector_search is not None and required_total > 0:
+            continue
+        if index == 0 or not step.restrict:
+            independent.append(step.source_name)
+    if len(independent) < 2 or ctx.policy.concurrency < 2:
+        return {}
+    results = run_concurrently(ctx, [scans[name] for name in independent], run, label="assembly")
+    ready = {}
+    for name, rows in zip(independent, results):
+        _check_ids(scans[name], rows)
+        ready[name] = rows
+    return ready
 
 
 def _bound(scan: RemoteScan, maximum_keys: int | None) -> int | None:
@@ -134,6 +160,11 @@ def _read(
         rows = tuple(rows_list)
     else:
         rows = ctx.execute(scan, run)
+    _check_ids(scan, rows)
+    return rows
+
+
+def _check_ids(scan: RemoteScan, rows) -> None:
     ids = [row.get("id") for row in rows]
     if any(value is None for value in ids) or len(set(ids)) != len(ids):
         fail(
@@ -141,4 +172,3 @@ def _read(
             f"Source '{scan.source.source_name}' returned missing or duplicate logical IDs for record assembly.",
             source_name=scan.source.source_name,
         )
-    return rows

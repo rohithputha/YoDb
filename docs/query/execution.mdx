@@ -119,8 +119,9 @@ pushdown but preserves logical results.
 Choosing the read order by cost is described in
 [How queries are planned](/query/planning), joins between datasets in
 [Joins](/query/joins), and the semantic filter in
-[Semantic filter](/query/semantic-filter). Reads run one after another, not in
-parallel; see [Limits](/reference/limits).
+[Semantic filter](/query/semantic-filter). Reads that depend on learned IDs run one
+after another; reads that do not (the sides of an independent join, the first reads of an
+assembly) run at the same time; see [Joins](/query/joins) and [Limits](/reference/limits).
 
 ## Bounds and explain
 
