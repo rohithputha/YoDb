@@ -50,6 +50,8 @@ class OpenAICompatibleGenerator:
         guided: bool = True,
         timeout: float = 120.0,
         thinking: bool = False,
+        stream: bool = True,
+        retries: int = 3,
     ) -> None:
         self.name = model
         self.model = model
@@ -61,10 +63,17 @@ class OpenAICompatibleGenerator:
         # A reasoning model (Qwen3, ...) may think before it answers.  Thinking is turned off with the
         # model's soft switch so the answer is the JSON alone; what it still emits in <think> tags is removed.
         self.thinking = thinking
+        # The answer is streamed (server-sent events) by default: a long answer then arrives as it is written
+        # instead of in one response after it is complete, which a proxy in front of the server may give up on
+        # (Cloudflare answers 524 after 100 s without a byte).  ``timeout`` is then the longest silence allowed.
+        self.stream = stream
+        # A transient failure (429, 5xx, a proxy's 52x, a dropped connection) is retried with a growing pause.
+        self.retries = retries
 
     # How the schema is handed over, tried in this order until the server accepts one (remembered afterwards):
     # OpenAI's structured outputs, vLLM's guided decoding, plain JSON mode, nothing.
     MODES = ("json_schema", "guided_json", "json_object", "none")
+    TRANSIENT = frozenset({408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527, 529, 530})
 
     def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None, max_tokens: int | None = None) -> Generation:
         import urllib.error
@@ -86,15 +95,12 @@ class OpenAICompatibleGenerator:
                 body["guided_json"] = json_schema
             elif mode == "json_object":
                 body["response_format"] = {"type": "json_object"}
-            request = urllib.request.Request(
-                f"{self.base_url}/chat/completions",
-                data=json.dumps(body).encode("utf-8"),
-                headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
-            )
+            if self.stream:
+                body["stream"] = True
+                body["stream_options"] = {"include_usage": True}
             started = time.perf_counter()
             try:
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
+                text, usage = self._request(body)
             except urllib.error.HTTPError as error:
                 if error.code in (400, 422) and mode != "none":
                     last_error = error
@@ -102,10 +108,75 @@ class OpenAICompatibleGenerator:
                 raise
             self._mode = mode
             latency = (time.perf_counter() - started) * 1000
-            text = strip_thinking(payload["choices"][0]["message"]["content"] or "")
-            usage = payload.get("usage") or {}
-            return Generation(text, int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0)), latency)
+            return Generation(strip_thinking(text), int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0)), latency)
         raise RuntimeError(f"the endpoint rejected every request mode: {last_error}")
+
+    def _request(self, body: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        """One chat completion, retried on transient failures; the text and the usage."""
+
+        import urllib.error
+
+        attempt = 0
+        while True:
+            request = urllib.request.Request(
+                f"{self.base_url}/chat/completions",
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}", "Accept": "text/event-stream" if body.get("stream") else "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    if body.get("stream"):
+                        return read_stream(response)
+                    payload = json.loads(response.read().decode("utf-8"))
+                    choice = (payload.get("choices") or [{}])[0]
+                    return (choice.get("message") or {}).get("content") or "", payload.get("usage") or {}
+            except urllib.error.HTTPError as error:
+                detail = _error_detail(error)
+                if error.code not in self.TRANSIENT or attempt >= self.retries:
+                    raise urllib.error.HTTPError(error.url, error.code, f"{error.reason}{detail}", error.headers, None) from None
+                last = f"HTTP {error.code}{detail}"
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as error:
+                if attempt >= self.retries:
+                    raise
+                last = f"{type(error).__name__}: {error}"
+            attempt += 1
+            pause = min(60.0, 5.0 * 2 ** (attempt - 1))
+            print(f"    model call failed ({last}); retry {attempt}/{self.retries} in {pause:.0f} s", flush=True)
+            time.sleep(pause)
+
+
+def _error_detail(error) -> str:
+    try:
+        text = error.read().decode("utf-8", "replace").strip()
+    except Exception:
+        return ""
+    return f": {text[:300]}" if text else ""
+
+
+def read_stream(response) -> tuple[str, dict[str, Any]]:
+    """The text and usage of a server-sent-event chat completion (``data: {...}`` lines, ``[DONE]`` at the end)."""
+
+    parts: list[str] = []
+    usage: dict[str, Any] = {}
+    for raw in response:
+        line = raw.decode("utf-8", "replace").strip()
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data)
+        except ValueError:
+            continue
+        if chunk.get("usage"):
+            usage = chunk["usage"]
+        for choice in chunk.get("choices") or []:
+            delta = choice.get("delta") or {}
+            content = delta.get("content")                      # ``reasoning_content`` (thinking) is not the answer
+            if content:
+                parts.append(content)
+    return "".join(parts), usage
 
 
 _THINK = re.compile(r"<think>.*?</think>\s*", re.DOTALL)

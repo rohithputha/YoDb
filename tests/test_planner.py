@@ -282,9 +282,21 @@ class EndpointTests(unittest.TestCase):
                     self.end_headers()
                     self.wfile.write(b"{}")
                     return
-                payload = json.dumps({"choices": [{"message": {"content": '{"ok": true}'}}], "usage": {"prompt_tokens": 7, "completion_tokens": 3}}).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
+                if body.get("stream"):
+                    assert body["stream_options"] == {"include_usage": True}
+                    chunks = [
+                        {"choices": [{"delta": {"role": "assistant"}}]},
+                        {"choices": [{"delta": {"content": '{"ok": '}}]},
+                        {"choices": [{"delta": {"content": "true}"}}]},
+                        {"choices": [], "usage": {"prompt_tokens": 7, "completion_tokens": 3}},
+                    ]
+                    payload = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks).encode() + b": keep-alive\n\ndata: [DONE]\n\n"
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                else:
+                    payload = json.dumps({"choices": [{"message": {"content": '{"ok": true}'}}], "usage": {"prompt_tokens": 7, "completion_tokens": 3}}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(payload)
 
@@ -294,11 +306,56 @@ class EndpointTests(unittest.TestCase):
         server = HTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
-            generator = OpenAICompatibleGenerator("m", base_url=f"http://127.0.0.1:{server.server_port}/v1")
-            first = generator.generate([{"role": "user", "content": "q"}], json_schema={"type": "object"})
-            generator.generate([{"role": "user", "content": "q"}], json_schema={"type": "object"})
-            self.assertEqual((first.text, first.tokens_in, first.tokens_out), ('{"ok": true}', 7, 3))
-            self.assertEqual(seen, ["json_schema", "guided_json", "guided_json"])
+            for stream in (True, False):
+                seen.clear()
+                generator = OpenAICompatibleGenerator("m", base_url=f"http://127.0.0.1:{server.server_port}/v1", stream=stream)
+                first = generator.generate([{"role": "user", "content": "q"}], json_schema={"type": "object"})
+                generator.generate([{"role": "user", "content": "q"}], json_schema={"type": "object"})
+                self.assertEqual((first.text, first.tokens_in, first.tokens_out), ('{"ok": true}', 7, 3), stream)
+                self.assertEqual(seen, ["json_schema", "guided_json", "guided_json"], stream)
+        finally:
+            server.shutdown()
+
+    def test_a_transient_failure_is_retried_and_a_final_one_carries_the_status(self) -> None:
+        import threading
+        import urllib.error
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from unittest import mock
+
+        from planner.llm import OpenAICompatibleGenerator
+
+        calls = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                calls.append(1)
+                if len(calls) < 3:
+                    self.send_response(524)
+                    self.end_headers()
+                    self.wfile.write(b"origin timeout")
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"choices": [{"message": {"content": "ok"}}], "usage": {}}).encode())
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            with mock.patch("time.sleep"):
+                generator = OpenAICompatibleGenerator("m", base_url=f"http://127.0.0.1:{server.server_port}/v1", stream=False, retries=3)
+                self.assertEqual(generator.generate([{"role": "user", "content": "q"}]).text, "ok")
+                self.assertEqual(len(calls), 3)
+                calls.clear()
+                strict = OpenAICompatibleGenerator("m", base_url=f"http://127.0.0.1:{server.server_port}/v1", stream=False, retries=0)
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    strict.generate([{"role": "user", "content": "q"}])
+            self.assertEqual(raised.exception.code, 524)
+            self.assertIn("origin timeout", str(raised.exception))
         finally:
             server.shutdown()
 
