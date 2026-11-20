@@ -416,3 +416,65 @@ class ValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExecutorSessionTests(unittest.TestCase):
+    """An AGE statement runs with ag_catalog on a transaction-local search path, after a best-effort LOAD."""
+
+    def test_the_age_statement_is_preceded_by_load_and_a_local_search_path(self) -> None:
+        from yodb.compilation import CompiledOutputColumn, CompiledPostgresQuery
+        from yodb.execution import PostgresQueryExecutionAdapter
+
+        executed = []
+
+        class Cursor:
+            description = None
+
+            def execute(self, sql, params=None):
+                executed.append((sql, params))
+                if sql.startswith("LOAD"):
+                    raise RuntimeError("permission denied")
+
+            def fetchall(self):
+                return [('"c1"', '"t1"')]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        class Connection:
+            rolled_back = 0
+
+            def cursor(self):
+                return Cursor()
+
+            def rollback(self):
+                self.rolled_back += 1
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        class Connections:
+            source_kind = SourceKind.POSTGRES
+            connection = Connection()
+
+            def acquire(self, ref, *, timeout_seconds=None):
+                return self.connection
+
+        adapter = PostgresQueryExecutionAdapter(Connections())
+        query = CompiledPostgresQuery("graphdb", "graphdb", "SELECT start_id, end_id FROM ag_catalog.cypher(...)", ("{}",),
+                                      (CompiledOutputColumn("start_id", "start_id"), CompiledOutputColumn("end_id", "end_id")), requires_extension="age")
+        rows = adapter.execute(query)
+        self.assertEqual(rows, ({"start_id": '"c1"', "end_id": '"t1"'},))
+        statements = [sql for sql, _ in executed]
+        self.assertEqual(statements[0], "LOAD 'age'")
+        self.assertEqual(Connections.connection.rolled_back, 1)                       # the refused LOAD is rolled back, not fatal
+        self.assertTrue(any("search_path" in sql for sql in statements))
+        path_params = next(params for sql, params in executed if "search_path" in sql)
+        self.assertEqual(path_params[0], 'ag_catalog, "$user", public')
+        self.assertLess(statements.index(next(s for s in statements if "search_path" in s)), statements.index(query.sql))

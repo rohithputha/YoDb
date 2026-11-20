@@ -69,6 +69,15 @@ def _timestamp(value: str | None) -> datetime | None:
         return None
 
 
+def _elite(value: str | None) -> str | None:
+    """Yelp writes the year 2020 as ``20,20`` in the elite list; store it as ``2020``."""
+
+    if not value:
+        return None
+    years = [year.strip() for year in value.replace("20,20", "2020").split(",") if year.strip()]
+    return ",".join(dict.fromkeys(years)) or None
+
+
 def _jsonb(value) -> str | None:
     return None if value is None else json.dumps(value)
 
@@ -100,7 +109,7 @@ def load_tables(connection, sample: Sample) -> None:
         n = copy_rows(cursor, "yelp.users",
                       ("user_id", "name", "review_count", "yelping_since", "useful", "funny", "cool", "fans", "elite", "average_stars"),
                       ((u["user_id"], u.get("name"), u.get("review_count"), _timestamp(u.get("yelping_since")), u.get("useful"),
-                        u.get("funny"), u.get("cool"), u.get("fans"), u.get("elite") or None, u.get("average_stars"))
+                        u.get("funny"), u.get("cool"), u.get("fans"), _elite(u.get("elite")), u.get("average_stars"))
                        for u in sample.users.values()))
         log(f"  yelp.users: {n:,} rows")
         n = copy_rows(cursor, "yelp.friendship", ("user_id", "friend_id"), sample.friendships)
@@ -179,6 +188,8 @@ def load_graph(connection, batch_size: int) -> None:
             cursor.execute("LOAD 'age'")
         except psycopg.Error:
             connection.rollback()
+        # AGE's own functions (age_unnest behind UNWIND, ...) are looked up unqualified: the session needs ag_catalog on its path.
+        cursor.execute('SET search_path = ag_catalog, "$user", public')
         cursor.execute(f"SELECT * FROM ag_catalog.cypher('{GRAPH}', $$ MATCH (n) DETACH DELETE n $$) AS (v ag_catalog.agtype)")
         for label, sql in (
             ("Business", "SELECT business_id FROM yelp.business ORDER BY 1"),

@@ -67,6 +67,11 @@ class PostgresQueryExecutionAdapter:
                         cursor.execute(
                             "SELECT set_config('statement_timeout', %s, true)", (str(max(1, math.ceil(limit * 1000))),)
                         )
+                    if query.requires_extension == "age":
+                        # AGE looks its own functions up unqualified (age_unnest behind UNWIND, ...); the catalog's
+                        # tables are always schema-qualified, so the path change touches nothing else.  Local to
+                        # this transaction, so the pooled session is unchanged afterwards.
+                        cursor.execute("SELECT set_config('search_path', %s, true)", ('ag_catalog, "$user", public',))
                     cursor.execute(query.sql, query.parameters)
                     rows = cursor.fetchall()
         except YoDbError:
