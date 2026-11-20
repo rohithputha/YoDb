@@ -245,14 +245,14 @@ TEMPLATES: tuple[Template, ...] = (
                f"JOIN yelp.users fr ON fr.user_id = f.friend_id WHERE u.user_id = %(user_id)s ORDER BY fr.name, u.user_id, f.friend_id LIMIT {PAGE}",
     ),
     Template(
-        "D02", "dependent", "Which friends of users with at least {fans_min_hi} fans have at least {fans_min} fans themselves? Order by the fans of the user whose friend they are, most first.",
-        ("fans_min_hi", "fans_min"), 8,
-        plan=(q("user", ["name", "fans"], p("fans", "gte", "{fans_min_hi}"), step("user_friends_with", "friend", ["name", "fans"], p("fans", "gte", "{fans_min}")),
-               order_by=[("fans", "desc")]),),
+        "D02", "dependent", "Which friends of the user with id {user_id} have at least {fans_min} fans? Most fans first.",
+        ("user_id", "fans_min"), 8,
+        plan=(q("user", ["name", "fans"], p("id", "eq", "{user_id}"), step("user_friends_with", "friend", ["name", "fans"], p("fans", "gte", "{fans_min}")),
+               order_by=[("friend.fans", "desc")]),),
         sources=(GRAPH, RELATIONAL), answer="friend.id", answer_dataset="user",
         oracle=f"SELECT f.friend_id AS answer_id, u.user_id AS evidence_user FROM yelp.users u JOIN yelp.friendship f ON f.user_id = u.user_id "
-               f"JOIN yelp.users fr ON fr.user_id = f.friend_id WHERE u.fans >= %(fans_min_hi)s AND fr.fans >= %(fans_min)s "
-               f"ORDER BY u.fans DESC, u.user_id, f.friend_id LIMIT {PAGE}",
+               f"JOIN yelp.users fr ON fr.user_id = f.friend_id WHERE u.user_id = %(user_id)s AND fr.fans >= %(fans_min)s "
+               f"ORDER BY fr.fans DESC, u.user_id, f.friend_id LIMIT {PAGE}",
     ),
     Template(
         "D03", "dependent", "Which businesses rated at least {stars_hi} stars has the user with id {user_id} reviewed? Alphabetically by business name.",
@@ -274,14 +274,14 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY u.user_id, b.business_id LIMIT {PAGE}",
     ),
     Template(
-        "D05", "dependent", "Which categories do the businesses in {city} rated at least {stars_hi} stars belong to? Alphabetically by category name.",
-        ("city", "stars_hi"), 8,
-        plan=(q("business", ["name"], {"all": [p("city", "eq", "{city}"), p("stars", "gte", "{stars_hi}")]}, step("business_in_category", "category", ["name"]),
-               order_by=[("category.name", "asc")]),),
+        "D05", "dependent", "Which categories do the businesses in {city} with at least {review_count_min} reviews and rated at least {stars_hi} stars belong to? Alphabetically by category name.",
+        ("city", "review_count_min", "stars_hi"), 8,
+        plan=(q("business", ["name"], {"all": [p("city", "eq", "{city}"), p("review_count", "gte", "{review_count_min}"), p("stars", "gte", "{stars_hi}")]},
+               step("business_in_category", "category", ["name"]), order_by=[("category.name", "asc")]),),
         sources=(GRAPH, RELATIONAL), answer="category.id", answer_dataset="category",
         oracle=f"SELECT bc.category_id AS answer_id, b.business_id AS evidence_business, c.name FROM yelp.business b "
                f"JOIN yelp.business_category bc ON bc.business_id = b.business_id JOIN yelp.category c ON c.category_id = bc.category_id "
-               f"WHERE {_BUSINESS_CITY_STARS} ORDER BY c.name, b.business_id, bc.category_id LIMIT {PAGE}",
+               f"WHERE {_BUSINESS_CITY_STARS} AND b.review_count >= %(review_count_min)s ORDER BY c.name, b.business_id, bc.category_id LIMIT {PAGE}",
     ),
     Template(
         "D06", "dependent", "Which open businesses in {city} are listed under {category_name} and rated at least {stars_hi} stars? Highest rated first.",
