@@ -43,6 +43,9 @@
   representations (full typed catalog, descriptions only, SSSI-retrieved typed fragments with hybrid lexical +
   vector retrieval), a JSON Schema of the output for grammar-constrained decoding, generators for an
   OpenAI-compatible endpoint (vLLM guided JSON), in-process transformers and a scripted one; a benchmark system.
+- `baselines/`: B1, the monolithic tool agent (the same model over raw SQL, vector-search and Cypher tools, counting
+  invalid native queries) and B2, framework routing (sub-question decomposition, one engine per store, aggregation;
+  also as a LlamaIndex pipeline when its packages are installed), both benchmark systems over the raw stores.
 
 - Rules. A rule is a name, a definition for the reader, a condition (a filter) and a `visible` flag, written
   per dataset in `rules.yaml`. A query uses one as `{"rule": "paying"}`, anywhere a condition can go and on either

@@ -151,3 +151,66 @@ class RenderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RouterTests(unittest.TestCase):
+    """B2 in plain Python: decompose and route, one native query per engine, aggregate."""
+
+    def router(self, answers, **options):
+        from baselines.router import RouterSystem
+
+        self.stores = FakeStores()
+        self.generator = ScriptedGenerator(answers)
+        return RouterSystem(self.stores, self.generator, **options)
+
+    def test_one_sub_question_routed_to_sql_then_aggregated(self) -> None:
+        router = self.router([
+            {"sub_questions": [{"question": "businesses in Philadelphia rated >= 4.5", "tool": "sql"}]},
+            {"query": "SELECT business_id FROM yelp.business WHERE city = 'Philadelphia' AND stars >= 4.5 ORDER BY 1 LIMIT 500"},
+            {"answer_dataset": "business", "answer_ids": ["b1"], "evidence": {}},
+        ])
+        prediction = router.answer({"id": "S01-001", "question": "Which businesses in Philadelphia are rated at least 4.5?"})
+        self.assertEqual(prediction.answer, ["b1"])
+        self.assertEqual(prediction.sources, ["relational"])
+        self.assertEqual((prediction.native_queries, prediction.native_errors, prediction.tool_calls), (1, 0, 1))
+        self.assertTrue(prediction.plan_valid)
+        self.assertEqual(prediction.plan[0]["tool"], "sql")
+        self.assertIn("Native query", self.generator.calls[2][-1]["content"])       # the aggregator sees the sub-answers
+        self.assertEqual(prediction.evidence, {"business": ["b1"]})
+
+    def test_two_sub_questions_with_the_earlier_answer_as_context_for_the_later(self) -> None:
+        router = self.router([
+            {"sub_questions": [{"question": "reviews about cheesesteak", "tool": "vector"}, {"question": "who reviewed b1", "tool": "graph"}]},
+            {"text": "cheesesteak", "top": 2, "where": None},
+            {"query": "MATCH (u:User)-[:REVIEWED]->(b:Business) WHERE b.id = 'b1' RETURN u.id, b.id", "columns": 2},
+            {"answer_dataset": "user", "answer_ids": ["u1", "u2"], "evidence": {"review": ["r1"]}},
+        ])
+        prediction = router.answer({"id": "q", "question": "q"})
+        self.assertEqual(prediction.answer, ["u1", "u2"])
+        self.assertEqual(prediction.sources, ["graph", "relational", "vector"])
+        self.assertIn("Earlier sub-answer (vector", self.generator.calls[2][-1]["content"])
+        self.assertEqual(prediction.retrieval_ms, 9.0)
+
+    def test_a_rejected_native_query_is_counted_and_the_plan_is_not_valid(self) -> None:
+        router = self.router([
+            {"sub_questions": [{"question": "x", "tool": "graph"}]},
+            {"query": "MACTH (n) RETURN n", "columns": 1},
+            {"answer_dataset": "user", "answer_ids": []},
+        ])
+        prediction = router.answer({"id": "q", "question": "q"})
+        self.assertEqual((prediction.native_queries, prediction.native_errors), (1, 1))
+        self.assertFalse(prediction.plan_valid)
+        self.assertEqual(prediction.answer, [])
+
+    def test_a_refusal_and_malformed_routing(self) -> None:
+        self.assertTrue(self.router([{"refuse": {"code": "not_a_read", "reason": "no"}}]).answer({"id": "x", "question": "Delete"}).refused)
+        bad = self.router(["???"]).answer({"id": "x", "question": "q"})
+        self.assertEqual(bad.error, "router_output_invalid")
+        unrouted = self.router([{"sub_questions": [{"question": "q", "tool": "teleport"}]}]).answer({"id": "x", "question": "q"})
+        self.assertEqual(unrouted.error, "router_output_invalid")
+
+    def test_the_sqlalchemy_url_is_derived_from_a_conninfo(self) -> None:
+        from baselines.router import _sqlalchemy_url
+
+        self.assertEqual(_sqlalchemy_url("host=h port=5 dbname=d user=u password=p"), "postgresql+psycopg://u:p@h:5/d")
+        self.assertEqual(_sqlalchemy_url("postgresql://u:p@h/d"), "postgresql+psycopg://u:p@h/d")
