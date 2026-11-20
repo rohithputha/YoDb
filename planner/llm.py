@@ -57,27 +57,47 @@ class OpenAICompatibleGenerator:
         self.guided = guided
         self.timeout = timeout
 
+    # How the schema is handed over, tried in this order until the server accepts one (remembered afterwards):
+    # OpenAI's structured outputs, vLLM's guided decoding, plain JSON mode, nothing.
+    MODES = ("json_schema", "guided_json", "json_object", "none")
+
     def generate(self, messages: Sequence[dict[str, str]], *, json_schema: dict[str, Any] | None = None) -> Generation:
-        body: dict[str, Any] = {
-            "model": self.model, "messages": list(messages), "temperature": 0, "max_tokens": self.max_tokens, "seed": 0,
-        }
-        if json_schema is not None and self.guided:
-            body["guided_json"] = json_schema                       # vLLM; ignored by servers that do not know it
-            body["response_format"] = {"type": "json_object"}
-        elif json_schema is not None:
-            body["response_format"] = {"type": "json_object"}
-        request = urllib.request.Request(
-            f"{self.base_url}/chat/completions",
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
-        )
-        started = time.perf_counter()
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        latency = (time.perf_counter() - started) * 1000
-        text = payload["choices"][0]["message"]["content"] or ""
-        usage = payload.get("usage") or {}
-        return Generation(text, int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0)), latency)
+        import urllib.error
+
+        modes = [m for m in self.MODES if self.guided or m in ("json_object", "none")] if json_schema is not None else ["none"]
+        if getattr(self, "_mode", None) in modes:
+            modes = modes[modes.index(self._mode):]
+        last_error: Exception | None = None
+        for mode in modes:
+            body: dict[str, Any] = {
+                "model": self.model, "messages": list(messages), "temperature": 0, "max_tokens": self.max_tokens, "seed": 0,
+            }
+            if mode == "json_schema":
+                body["response_format"] = {"type": "json_schema", "json_schema": {"name": "output", "schema": json_schema}}
+            elif mode == "guided_json":
+                body["guided_json"] = json_schema
+            elif mode == "json_object":
+                body["response_format"] = {"type": "json_object"}
+            request = urllib.request.Request(
+                f"{self.base_url}/chat/completions",
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
+            )
+            started = time.perf_counter()
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as error:
+                if error.code in (400, 422) and mode != "none":
+                    last_error = error
+                    continue                                    # the server does not know this mode: try the next
+                raise
+            self._mode = mode
+            latency = (time.perf_counter() - started) * 1000
+            text = payload["choices"][0]["message"]["content"] or ""
+            usage = payload.get("usage") or {}
+            return Generation(text, int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0)), latency)
+        raise RuntimeError(f"the endpoint rejected every request mode: {last_error}")
 
 
 class TransformersGenerator:

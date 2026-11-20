@@ -254,3 +254,44 @@ class SSSITests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EndpointTests(unittest.TestCase):
+    """The OpenAI-compatible generator finds a request mode the server accepts and keeps it."""
+
+    def test_the_schema_mode_falls_back_until_the_server_accepts_one(self) -> None:
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        from planner.llm import OpenAICompatibleGenerator
+
+        seen = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                seen.append("guided_json" if "guided_json" in body else (body.get("response_format") or {}).get("type", "none"))
+                if (body.get("response_format") or {}).get("type") == "json_schema":
+                    self.send_response(400)
+                    self.end_headers()
+                    self.wfile.write(b"{}")
+                    return
+                payload = json.dumps({"choices": [{"message": {"content": '{"ok": true}'}}], "usage": {"prompt_tokens": 7, "completion_tokens": 3}}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            generator = OpenAICompatibleGenerator("m", base_url=f"http://127.0.0.1:{server.server_port}/v1")
+            first = generator.generate([{"role": "user", "content": "q"}], json_schema={"type": "object"})
+            generator.generate([{"role": "user", "content": "q"}], json_schema={"type": "object"})
+            self.assertEqual((first.text, first.tokens_in, first.tokens_out), ('{"ok": true}', 7, 3))
+            self.assertEqual(seen, ["json_schema", "guided_json", "guided_json"])
+        finally:
+            server.shutdown()
