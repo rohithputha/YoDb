@@ -245,7 +245,7 @@ TEMPLATES: tuple[Template, ...] = (
                f"JOIN yelp.users fr ON fr.user_id = f.friend_id WHERE u.user_id = %(user_id)s ORDER BY fr.name, u.user_id, f.friend_id LIMIT {PAGE}",
     ),
     Template(
-        "D02", "dependent", "Which friends of users with at least {fans_min_hi} fans have at least {fans_min} fans themselves? Take the users with most fans first.",
+        "D02", "dependent", "Which friends of users with at least {fans_min_hi} fans have at least {fans_min} fans themselves? Order by the fans of the user whose friend they are, most first.",
         ("fans_min_hi", "fans_min"), 8,
         plan=(q("user", ["name", "fans"], p("fans", "gte", "{fans_min_hi}"), step("user_friends_with", "friend", ["name", "fans"], p("fans", "gte", "{fans_min}")),
                order_by=[("fans", "desc")]),),
