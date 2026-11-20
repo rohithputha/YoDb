@@ -54,6 +54,16 @@ if [ -z "${OPENAI_API_KEY:-}" ] || [ "$OPENAI_API_KEY" = "<your ASU key>" ]; the
     exit 1
 fi
 export YODB_EMBED_THREADS="${YODB_EMBED_THREADS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+# The two connection strings follow the container's port unless .env says otherwise.
+PG_PORT="${YODB_PG_PORT:-55434}"
+export YELP_DSN="${YELP_DSN:-host=localhost port=$PG_PORT dbname=${YODB_PG_DB:-yelp} user=postgres password=${YODB_PG_PASSWORD:-postgres}}"
+export YODB_CONN_YELP="${YODB_CONN_YELP:-host=localhost port=$PG_PORT dbname=${YODB_PG_DB:-yelp} user=yodb_ro password=yodb_ro}"
+for name in YELP_DSN YODB_CONN_YELP; do
+    case "${!name}" in
+        *port=*) ;;
+        *) echo "run_all.sh: $name in .env names no port; the container listens on $PG_PORT (e.g. $name=host=localhost port=$PG_PORT dbname=yelp user=... password=...)" >&2; exit 1 ;;
+    esac
+done
 
 # --- 1. Python ----------------------------------------------------------------------------------------------------
 
