@@ -132,11 +132,11 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY r.date, r.review_id LIMIT {PAGE}",
     ),
     Template(
-        "S05", "single", "Which users who have ever been Yelp Elite have at least {fans_min} fans? Most fans first.",
-        ("fans_min",), 3,
-        plan=(q("user", ["name", "fans"], {"all": [{"rule": "ever_elite"}, p("fans", "gte", "{fans_min}")]}, order_by=[("fans", "desc")]),),
+        "S05", "single", "Which users who have ever been Yelp Elite have at least {fans_min_elite} fans? Most fans first.",
+        ("fans_min_elite",), 3,
+        plan=(q("user", ["name", "fans"], {"all": [{"rule": "ever_elite"}, p("fans", "gte", "{fans_min_elite}")]}, order_by=[("fans", "desc")]),),
         sources=(RELATIONAL,), answer_dataset="user",
-        oracle=f"SELECT u.user_id AS answer_id FROM yelp.users u WHERE u.elite IS NOT NULL AND u.fans >= %(fans_min)s ORDER BY u.fans DESC, u.user_id LIMIT {PAGE}",
+        oracle=f"SELECT u.user_id AS answer_id FROM yelp.users u WHERE u.elite IS NOT NULL AND u.fans >= %(fans_min_elite)s ORDER BY u.fans DESC, u.user_id LIMIT {PAGE}",
     ),
     Template(
         "S06", "single", "Which users have written at least {user_reviews_min} reviews and give {stars_hi} stars or more on average? Most reviews first.",
@@ -170,13 +170,15 @@ TEMPLATES: tuple[Template, ...] = (
     ),
     # ================= independent multi-source (60): column joins, both sides filtered =================
     Template(
-        "I01", "independent", "Show the positive reviews (4 stars or more) of businesses in {city} rated at least {stars_hi} stars, with the business name, highest review rating first.",
-        ("city", "stars_hi"), 12,
-        plan=(q("review", ["stars"], {"rule": "positive"}, step("review_of_business", "business", ["name"], {"all": [p("city", "eq", "{city}"), p("stars", "gte", "{stars_hi}")]}),
+        "I01", "independent", "Show the positive reviews (4 stars or more) written in {month_name} {year} of businesses in {city} rated at least {stars_hi} stars, with the business name, highest review rating first.",
+        ("city", "stars_hi", "year", "month"), 12,
+        plan=(q("review", ["stars", "date"], {"all": [{"rule": "positive"}, p("date", "gte", "{month_start}"), p("date", "lt", "{month_end}")]},
+               step("review_of_business", "business", ["name"], {"all": [p("city", "eq", "{city}"), p("stars", "gte", "{stars_hi}")]}),
                order_by=[("stars", "desc")]),),
         sources=(RELATIONAL,), answer_dataset="review",
         oracle=f"SELECT r.review_id AS answer_id, b.business_id AS evidence_business FROM yelp.review r JOIN yelp.business b ON b.business_id = r.business_id "
-               f"WHERE r.stars >= 4 AND {_BUSINESS_CITY_STARS} ORDER BY r.stars DESC, r.review_id, b.business_id LIMIT {PAGE}",
+               f"WHERE r.stars >= 4 AND r.date >= %(month_start)s::timestamp AND r.date < %(month_end)s::timestamp AND {_BUSINESS_CITY_STARS} "
+               f"ORDER BY r.stars DESC, r.review_id, b.business_id LIMIT {PAGE}",
     ),
     Template(
         "I02", "independent", "Which helpful negative reviews (2 stars or less, at least 5 useful votes) were written about open businesses in {city} with at least {review_count_min} reviews? Most useful first.",
@@ -190,13 +192,13 @@ TEMPLATES: tuple[Template, ...] = (
                f"ORDER BY r.useful DESC, r.review_id, b.business_id LIMIT {PAGE}",
     ),
     Template(
-        "I03", "independent", "Which five-star reviews written in {year} are by active reviewers (50 reviews or more)? Earliest first.",
-        ("year",), 6,
-        plan=(q("review", ["stars", "date"], {"all": [p("stars", "eq", 5), p("date", "gte", "{year_start}"), p("date", "lt", "{year_end}")]},
+        "I03", "independent", "Which five-star reviews written in {month_name} {year} are by active reviewers (50 reviews or more)? Earliest first.",
+        ("year", "month"), 6,
+        plan=(q("review", ["stars", "date"], {"all": [p("stars", "eq", 5), p("date", "gte", "{month_start}"), p("date", "lt", "{month_end}")]},
                step("user_wrote_review", "author", ["name", "review_count"], {"rule": "active_reviewer"}, direction="reverse"), order_by=[("date", "asc")]),),
         sources=(RELATIONAL,), answer_dataset="review",
         oracle=f"SELECT r.review_id AS answer_id, u.user_id AS evidence_user FROM yelp.review r JOIN yelp.users u ON u.user_id = r.user_id "
-               f"WHERE r.stars = 5 AND r.date >= %(year_start)s::timestamp AND r.date < %(year_end)s::timestamp AND u.review_count >= 50 "
+               f"WHERE r.stars = 5 AND r.date >= %(month_start)s::timestamp AND r.date < %(month_end)s::timestamp AND u.review_count >= 50 "
                f"ORDER BY r.date, r.review_id, u.user_id LIMIT {PAGE}",
     ),
     Template(
@@ -227,15 +229,16 @@ TEMPLATES: tuple[Template, ...] = (
                f"WHERE b.city = %(city)s AND b.review_count >= %(review_count_min)s AND r.useful >= 5 ORDER BY r.useful DESC, b.business_id, r.review_id LIMIT {PAGE}",
     ),
     Template(
-        "I07", "independent", "Which reviews with at least {useful_min} useful votes were written by users with at least {fans_min} fans? Most useful first.",
-        ("useful_min", "fans_min"), 8,
-        plan=(q("user", ["name", "fans"], p("fans", "gte", "{fans_min}"), step("user_wrote_review", "review", ["useful"], p("useful", "gte", "{useful_min}")),
+        "I07", "independent", "Which reviews written in {year} with at least {useful_min} useful votes are by users with at least {fans_min} fans? Most useful first.",
+        ("useful_min", "fans_min", "year"), 8,
+        plan=(q("user", ["name", "fans"], p("fans", "gte", "{fans_min}"),
+               step("user_wrote_review", "review", ["useful", "date"], {"all": [p("useful", "gte", "{useful_min}"), p("date", "gte", "{year_start}"), p("date", "lt", "{year_end}")]}),
                order_by=[("review.useful", "desc")]),),
         sources=(RELATIONAL,), answer="review.id", answer_dataset="review",
         oracle=f"SELECT r.review_id AS answer_id, u.user_id AS evidence_user FROM yelp.users u JOIN yelp.review r ON r.user_id = u.user_id "
-               f"WHERE u.fans >= %(fans_min)s AND r.useful >= %(useful_min)s ORDER BY r.useful DESC, u.user_id, r.review_id LIMIT {PAGE}",
+               f"WHERE u.fans >= %(fans_min)s AND r.useful >= %(useful_min)s AND r.date >= %(year_start)s::timestamp AND r.date < %(year_end)s::timestamp "
+               f"ORDER BY r.useful DESC, u.user_id, r.review_id LIMIT {PAGE}",
     ),
-    # ================= dependent chains (80): graph edges and two-step plans =================
     Template(
         "D01", "dependent", "Who are the friends of the user with id {user_id}? Alphabetically by the friend's name.",
         ("user_id",), 8,

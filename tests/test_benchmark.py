@@ -109,7 +109,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(derive({"year": 2018})["year_end"], "2019-01-01T00:00:00Z")
 
     def test_instances_are_deterministic_distinct_and_counted(self) -> None:
-        template = next(t for t in TEMPLATES if t.id == "I01")
+        template = next(t for t in TEMPLATES if t.id == "S01")              # slots: city, stars_hi
         first, second = instances_of(template, POOLS, "seed"), instances_of(template, POOLS, "seed")
         self.assertEqual(first, second)
         self.assertEqual(len(first), template.instances)

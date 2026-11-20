@@ -54,6 +54,7 @@ FIXED_POOLS: dict[str, list[Any]] = {
     "useful_min": [3, 5, 10],
     "fans_min": [20, 50, 100],
     "fans_min_hi": [100, 200],
+    "fans_min_elite": [200, 300, 500],
     "year": [2017, 2018, 2019],
     "month": [1, 4, 7, 10],
     "word": ["Coffee", "Bar", "Pizza", "Thai", "Mexican", "Vegan"],
