@@ -5,6 +5,46 @@ Everything below runs on a laptop (macOS or Linux). You need: **Docker Desktop**
 **ASU model endpoint key**. Expect one afternoon: most of the time is the Yelp download and
 embedding 100k reviews on a CPU.
 
+## The one-command version (laptop or ASU Sol)
+
+`scripts/run_all.sh` does sections 0–6 below in one go and can be rerun after an interruption (every
+step is skipped once its result exists; the experiments continue from the predictions already on disk):
+
+```bash
+git clone <repo> YoDb && cd YoDb
+cp .env.example .env      # put OPENAI_API_KEY and YELP_DATA (the folder with the yelp_academic_dataset_*.json files) in it
+scripts/run_all.sh --preset target --workers 8
+```
+
+It finds a container runtime itself: Docker or Podman on a laptop, Apptainer on an HPC node (no root
+needed; the server runs as you, its data under `$SCRATCH/yodb-pg`). `scripts/pg.sh up|status|psql|logs|down|destroy`
+manages that server afterwards. `--workers 8` answers eight questions at a time in the model-bound runs,
+which is what makes the sweep take about an hour instead of most of a day against the shared endpoint.
+
+### On ASU Sol
+
+```bash
+# 1. a compute session: 16 cores and 64 GB for the embeddings; 12 hours covers the target preset comfortably
+interactive -p general -q public -c 16 --mem=64G -t 0-12:00
+
+# 2. Python >= 3.11 (Sol's default python is older): one of
+module load mamba/latest && mamba create -n yodb python=3.12 -y && source activate yodb
+
+# 3. the dataset: copy it to scratch once (from your laptop: scp -r ~/Downloads/YelpJSON/yelp_dataset sol.asu.edu:/scratch/$USER/yelp_dataset)
+#    and set YELP_DATA=/scratch/<asurite>/yelp_dataset in .env
+
+# 4. the image: Sol allows `apptainer build --fakeroot`, which run_all.sh tries first; if it is refused, build
+#    the image on your laptop and bring the archive (docker save yodb-age -o yodb-age.tar; scp it to
+#    /scratch/<asurite>/yodb-pg/yodb-age.tar) and set YODB_PG_IMAGE_TAR to that path in .env
+
+# 5.
+scripts/run_all.sh --preset target --workers 8
+```
+
+Keep the session open while it runs (`tmux` on the login node before `interactive` survives a dropped
+connection). The server lives only inside the job: when the job ends, `scripts/pg.sh up` in the next
+one starts it again on the same data directory, and `run_all.sh` continues.
+
 ## 0. The code and its Python environment
 
 ```bash

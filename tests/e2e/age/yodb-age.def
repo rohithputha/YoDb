@@ -1,0 +1,20 @@
+# The same image as the Dockerfile next to it, as an Apptainer definition for machines without Docker
+# (an HPC node): PostgreSQL 16 with Apache AGE and pgvector.
+#
+#     apptainer build --fakeroot yodb-age.sif tests/e2e/age/yodb-age.def
+#
+# When --fakeroot is not allowed, build the Docker image elsewhere and bring it as an archive:
+#
+#     docker build -t yodb-age tests/e2e/age && docker save yodb-age -o yodb-age.tar      # on a machine with Docker
+#     apptainer build yodb-age.sif docker-archive://yodb-age.tar                        # on the node (no root needed)
+
+Bootstrap: docker
+From: apache/age:release_PG16_1.5.0
+
+%post
+    apt-get update
+    apt-get install -y --no-install-recommends postgresql-16-pgvector
+    rm -rf /var/lib/apt/lists/*
+
+%labels
+    Description "PostgreSQL 16 + Apache AGE 1.5 + pgvector, for YoDb's graph traversal and similarity search"
