@@ -21,9 +21,19 @@ The default sample is the proposal's target: 10,000 businesses, 100,000 reviews,
 
 ## 1. Get the data
 
-Download the Yelp Open Dataset (https://business.yelp.com/data/resources/open-dataset/,
-free for academic use) and unpack it; you need `yelp_academic_dataset_business.json`,
-`..._review.json` (about 5 GB) and `..._user.json` (about 3 GB) in one directory.
+The Yelp Open Dataset (https://business.yelp.com/data/resources/open-dataset/, free for
+academic use) sits behind a licence form, so there is no public URL to fetch it from without
+you: accept the form, copy the download link it gives you, and either
+
+```bash
+python examples/yelp/fetch.py --url "<the link>"            # downloads ~4.5 GB to ~/yelp and extracts it
+python examples/yelp/fetch.py --archive ~/Downloads/yelp_dataset.tar   # or extract a file you downloaded
+python examples/yelp/fetch.py --kaggle                      # or the Kaggle mirror (kaggle CLI + token)
+```
+
+or put the link in `.env` as `YELP_DATASET_URL` and let `load.py` fetch it when the files are
+missing. Either way you end with `yelp_academic_dataset_business.json`, `..._review.json`
+(about 5 GB) and `..._user.json` (about 3 GB) in `~/yelp` (`YELP_DATA` in `.env` moves it).
 
 ## 2. A PostgreSQL with both extensions
 
@@ -44,8 +54,8 @@ database: it creates the schema, the graph and the read-only role `yodb_ro`).
 pip install -e ".[semantic]"                        # fastembed, for the embeddings
 export YELP_DSN="host=localhost port=55434 dbname=yelp user=postgres password=postgres"
 
-python examples/yelp/load.py --data ~/yelp --dry-run                 # just the counts (reads the three files, ~10 min)
-python examples/yelp/load.py --data ~/yelp --schema                  # schema + tables + embeddings + graph
+python examples/yelp/load.py --dry-run                 # just the counts (reads the three files, ~10 min)
+python examples/yelp/load.py --schema                  # schema + tables + embeddings + graph
 ```
 
 Steps can be run alone (`load.py tables`, `load.py embeddings`, `load.py graph`) and the sample

@@ -210,7 +210,11 @@ def load_graph(connection, batch_size: int) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data", type=Path, help="directory with the Yelp JSON-lines files (needed for 'tables')")
+    parser.add_argument("--data", type=Path, default=Path(os.environ.get("YELP_DATA", "~/yelp")),
+                        help="directory with the Yelp JSON-lines files (default ~/yelp or $YELP_DATA); fetched when missing (see --url/--archive/--kaggle)")
+    parser.add_argument("--url", help="download link from the Yelp licence form, used when the files are missing (or YELP_DATASET_URL in .env)")
+    parser.add_argument("--archive", type=Path, help="an already downloaded archive to extract when the files are missing")
+    parser.add_argument("--kaggle", action="store_true", help="fetch the Kaggle mirror when the files are missing (kaggle CLI + credentials)")
     parser.add_argument("--dsn", default=os.environ.get("YELP_DSN"), help="owner connection string (or env YELP_DSN)")
     parser.add_argument("steps", nargs="*", default=["tables", "embeddings", "graph"], choices=["tables", "embeddings", "graph"],
                         help="which steps to run (default: all three)")
@@ -235,11 +239,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sample = None
     if "tables" in args.steps or args.dry_run:
-        if args.data is None:
-            parser.error("--data is required to load the tables")
-        missing = [f for f in FILES.values() if not (args.data / f).is_file()]
-        if missing:
-            parser.error(f"missing in {args.data}: {', '.join(missing)}")
+        from fetch import ensure
+
+        args.data = ensure(args.data, url=args.url, archive=args.archive, kaggle=args.kaggle)   # downloads/extracts when missing
         log(f"sampling with seed {args.seed!r}: {sizes}")
         started = time.perf_counter()
         with (args.data / FILES["business"]).open(encoding="utf-8") as b, \

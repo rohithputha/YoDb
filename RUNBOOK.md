@@ -52,14 +52,21 @@ against a real AGE. If a `G` case fails, stop here and send the output.
 
 ## 3. The Yelp data
 
-1. Download the Yelp Open Dataset: https://business.yelp.com/data/resources/open-dataset/
-   (free, academic use; a form, then a tar). Unpack it somewhere, e.g. `~/yelp/`, so that
-   `~/yelp/yelp_academic_dataset_business.json`, `..._review.json` and `..._user.json` exist.
+1. The Yelp Open Dataset sits behind a licence form: https://business.yelp.com/data/resources/open-dataset/
+   Accept it, copy the download link, and let the fetcher download and extract it into `~/yelp`:
+
+```bash
+python examples/yelp/fetch.py --url "<the download link>"          # ~4.5 GB; resumes if rerun
+```
+
+   (or `--archive` for a file you already downloaded, or `--kaggle` for the Kaggle mirror; or put the
+   link in `.env` as `YELP_DATASET_URL` and `load.py` fetches it itself when the files are missing).
+
 2. Load (the owner connection comes from `YELP_DSN` in `.env`):
 
 ```bash
-python examples/yelp/load.py --data ~/yelp --dry-run                 # counts only: ~10 min, reads the 3 files
-python examples/yelp/load.py --data ~/yelp --schema                  # schema + tables + embeddings + graph
+python examples/yelp/load.py --dry-run                 # counts only: ~10 min, reads the 3 files
+python examples/yelp/load.py --schema                  # schema + tables + embeddings + graph
 ```
 
 `--schema` drops and recreates everything, so it is safe to rerun. Embedding 100,000 reviews on a
