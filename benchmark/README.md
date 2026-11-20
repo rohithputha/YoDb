@@ -66,6 +66,18 @@ on the quality means. The experiments map onto the classes: **E1** (RQ1) compare
 class, **E2** (RQ2) compares the DAG and forced-sequential executors on the `independent`
 questions, **E3** (RQ3) compares schema representations on the planner's validity and tokens.
 
+## The whole protocol
+
+```bash
+PYTHONPATH=src python benchmark/experiments.py all --endpoint http://localhost:8000/v1 --repeat 5
+```
+
+runs E1 (planner, B1, B2, B3 on the held-out split), E2 (the gold plans with the DAG executor and
+with `--sequential`, five timed runs after a warm-up), E3 (the three schema representations) and the
+ablations (no grammar, no repairs), records peak memory per run, and writes `results/results.md`
+and `results/results.json`. `experiments.py e2` runs one experiment; `experiments.py tables`
+re-makes the tables from the runs on disk.
+
 ## Notes
 
 - Every gold query asks for the largest page (500) with a deterministic order, and the oracle

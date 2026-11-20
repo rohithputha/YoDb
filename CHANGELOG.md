@@ -46,6 +46,9 @@
 - `baselines/`: B1, the monolithic tool agent (the same model over raw SQL, vector-search and Cypher tools, counting
   invalid native queries) and B2, framework routing (sub-question decomposition, one engine per store, aggregation;
   also as a LlamaIndex pipeline when its packages are installed), both benchmark systems over the raw stores.
+- `benchmark/experiments.py`: E1 (systems by class), E2 (DAG against forced-sequential, timed runs), E3 (schema
+  representations) and the ablations, with resource measurements and regenerated tables; `REPORT.md`, the
+  report draft whose method sections describe what is built.
 
 - Rules. A rule is a name, a definition for the reader, a condition (a filter) and a `visible` flag, written
   per dataset in `rules.yaml`. A query uses one as `{"rule": "paying"}`, anywhere a condition can go and on either

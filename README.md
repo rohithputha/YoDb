@@ -23,6 +23,16 @@ The longer-term vision is to extend YoDb beyond PostgreSQL to heterogeneous data
 
 *YoDb is in active development. PostgreSQL (with the pgvector and Apache AGE extensions) is currently the supported backend; additional sources and visual retrieval are not yet implemented.*
 
+**The research project around it** (CSE 598, *A Typed Abstract Query Layer for Heterogeneous
+Retrieval in AI Agent Workflows*; see [REPORT.md](REPORT.md)):
+
+| Directory | What |
+| --- | --- |
+| [examples/yelp](examples/yelp) | the Yelp data layer: a deterministic sample loaded into tables, a pgvector column and an AGE graph, with its catalog |
+| [benchmark](benchmark) | 240 templated questions with oracle gold answers, the system harness, the scorer, and `experiments.py` for E1–E3 |
+| [planner](planner) | the natural-language planner: schema representations (full / descriptions / SSSI-retrieved), grammar-constrained JSON, validate-and-repair |
+| [baselines](baselines) | B1 the monolithic tool agent and B2 framework routing over the raw stores |
+
 ---
 
 YoDb lets an app or an AI agent ask one question about data that lives in
