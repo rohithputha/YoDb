@@ -48,6 +48,9 @@ class ResolvedField:
     resource: str
     physical_name: str
     uses: frozenset[FieldUse]
+    # The column's type family as the inspection saw it ("string", "int", "uuid", ...); None when the source
+    # was not inspected (tests).  The compiler uses it to order text in a collation-independent way.
+    physical_family: str | None = None
 
 
 @dataclass(frozen=True)
@@ -292,7 +295,18 @@ def _resolve_field(
         resource=representation.resource,
         physical_name=physical_binding.physical_name,
         uses=uses,
+        physical_family=_physical_family(active, source_name, representation.resource, physical_binding.physical_name),
     )
+
+
+def _physical_family(active: CatalogEvaluation, source_name: str, resource: str, column: str) -> str | None:
+    state = active.sources.get(source_name)
+    inspection = getattr(state, "inspection", None)
+    if inspection is None:
+        return None
+    physical = inspection.resources.get(resource)
+    field = None if physical is None else physical.fields.get(column)
+    return None if field is None else field.type_family
 
 
 def _collect_field_uses(query: BoundQuery, terms: TermRegistry) -> dict[str, set[FieldUse]]:

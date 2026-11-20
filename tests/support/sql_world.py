@@ -103,6 +103,7 @@ class SqlWorld:
         with self._lock:
             self.queries.append(query)
             sql = _DISTANCE.sub(lambda m: f"{_DISTANCE_OPERATORS[m.group(2)]}({m.group(1)}, %s)", query.sql)
+            sql = sql.replace('COLLATE "C"', "COLLATE BINARY")          # SQLite's byte-order collation
             rows = self._db.execute(sql.replace("%s", "?"), query.parameters).fetchall()
         names = [column.logical_field for column in query.output_columns]
         return tuple(dict(zip(names, row)) for row in rows)

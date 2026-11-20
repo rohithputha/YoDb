@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import json
 import re
 
-from ..catalog import SourceKind, VectorMetric
+from ..catalog import LogicalType, SourceKind, VectorMetric
 from ..errors import ErrorCode, ErrorDetail, QueryError
 from ..query.models import (
     BoundAllExpression,
@@ -95,7 +95,7 @@ class PostgresQueryCompiler:
         parameters: list[object] = []
         where = _compile_expression(query.query.where, context, parameters)
         order_by = ", ".join(
-            f"{_column(_require_resolved_field(context, term.field.name, 'order_by'))} "
+            f"{_order_column(_require_resolved_field(context, term.field.name, 'order_by'))} "
             f"{term.direction.value.upper()}"
             for term in query.query.order_by
         )
@@ -184,13 +184,13 @@ class PostgresQueryCompiler:
             parameters.append(_vector_literal(vector.query_vector))
             statements.append(
                 f"ORDER BY {_quote_identifier(vector.column)} {_VECTOR_OPERATORS[vector.metric]} %s::vector, "
-                f"{_column(scan.source.logical_id)} ASC"
+                f"{_order_column(scan.source.logical_id)} ASC"
             )
         elif scan.order_by:
             statements.append(
                 "ORDER BY "
                 + ", ".join(
-                    f"{_column(_require_resolved_field(context, term.field.name, 'order_by'))} "
+                    f"{_order_column(_require_resolved_field(context, term.field.name, 'order_by'))} "
                     f"{term.direction.value.upper()}"
                     for term in scan.order_by
                 )
@@ -369,6 +369,17 @@ def _resource(resource: str) -> str:
 
 def _column(field: ResolvedField) -> str:
     return _quote_identifier(field.physical_name)
+
+
+def _order_column(field: ResolvedField) -> str:
+    """A text column is ordered with ``COLLATE "C"`` (byte order, i.e. code-point order for UTF-8), so a
+    source orders text exactly as the coordinator does and a result never depends on the database's locale.
+    A column the inspection saw as non-text (an integer or uuid ``id``) cannot take a collation."""
+
+    collatable = field.physical_family == "string" or (
+        field.physical_family is None and field.field.spec.type in (LogicalType.STRING, LogicalType.TEXT)
+    )
+    return f'{_column(field)} COLLATE "C"' if collatable else _column(field)
 
 
 def _quote_identifier(identifier: str) -> str:

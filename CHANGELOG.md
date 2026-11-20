@@ -76,6 +76,10 @@
 - A ranked scan may return each row's distance (`VectorSearch.return_distance`), as the helper field
   `_distance`, which never reaches a result's rows.
 - `BoundQuery.explicit_order` says whether the caller asked for an order.
+- Text is ordered by code point everywhere. The PostgreSQL compiler orders text columns with `COLLATE "C"` (the
+  column's type family comes from the inspection, so an integer or uuid `id` is left alone), so a pushed order and a
+  coordinator order agree and a page never depends on the database's locale. PostgreSQL's declared `text_ordering`
+  is now `code_point`.
 - A catalog file may declare any `api_version` of the same major version up to the one this YoDb reads
   (`yodb/v0.2`), file by file. A newer file is refused. The format version moves only when a file format
   changes.

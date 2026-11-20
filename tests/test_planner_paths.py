@@ -349,12 +349,12 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(self.ids(_q(["name", "plan"], where, [{"field": "name", "direction": "desc"}], 1), billing=billing), ["c1"])
 
     def test_an_order_and_page_the_source_enforced_are_not_re_sorted(self) -> None:
-        # The source returns rows in its own collation order; Python must not
-        # reorder them (it would use code-point order instead).
+        # The source returns rows in the order its SQL asked for; Python must not reorder them.  That order is
+        # the same code-point order the coordinator uses (the SQL collates text with "C"), so single-source and
+        # multi-source answers agree: "Bravo" before "acme" either way.
         crm = ({"id": "x", "name": "acme", "status": "s"}, {"id": "y", "name": "Bravo", "status": "s"})
         rows = self.run_query(_q(["name"], order_by=[{"field": "name", "direction": "asc"}], first=2), crm=crm)
-        self.assertEqual([r["id"] for r in rows], ["x", "y"])
-        # multi-source: the coordinator owns the order, so code-point order applies
+        self.assertEqual([r["id"] for r in rows], ["x", "y"])      # the fake source returned them in this order and it stands
         rows = self.run_query(_q(["name", "plan"], order_by=[{"field": "name", "direction": "asc"}], first=2), crm=crm, billing=())
         self.assertEqual([r["id"] for r in rows], ["y", "x"])
 

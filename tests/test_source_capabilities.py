@@ -227,11 +227,24 @@ class SemanticCapabilityTests(unittest.TestCase):
 
 class OrderingNoteTests(unittest.TestCase):
     def test_yodb_flags_text_ordering_it_does_in_place_of_a_collating_source(self) -> None:
-        active = _crm_billing_catalog()  # both postgres: SOURCE_DEFINED ordering
+        from yodb.planning import TextOrdering
+
+        active = swap_kind(_crm_billing_catalog(), "crm")        # crm served by a source whose own collation decides
+        collating = CapabilityPlanningAdapter(replace(LIMITED, supports_order=True, supports_limit=True, orderable_types=STRINGS, text_ordering=TextOrdering.SOURCE_DEFINED))
+        raw = {"from": {"dataset": "customer"}, "select": ["name", "plan"], "order_by": [{"field": "name", "direction": "asc"}], "page": {"first": 5}}
+        planned = planner(PostgresPlanningAdapter(), collating).plan(resolve_query_sources(bind_query(parse_query(raw), active), active))
+        (sort,) = [n for n in planned.explain.nodes if n.kind == "coordinator_sort_page"]
+        self.assertEqual(sort.detail, ("note: text is ordered by YoDb in code-point order; the owning source's collation differs for: crm",))
+
+    def test_postgres_orders_text_like_the_coordinator(self) -> None:
+        from yodb.planning import POSTGRES_CAPABILITIES, TextOrdering
+
+        self.assertIs(POSTGRES_CAPABILITIES.text_ordering, TextOrdering.CODE_POINT)
+        active = _crm_billing_catalog()
         raw = {"from": {"dataset": "customer"}, "select": ["name", "plan"], "order_by": [{"field": "name", "direction": "asc"}], "page": {"first": 5}}
         planned = planner(PostgresPlanningAdapter()).plan(resolve_query_sources(bind_query(parse_query(raw), active), active))
         (sort,) = [n for n in planned.explain.nodes if n.kind == "coordinator_sort_page"]
-        self.assertEqual(sort.detail, ("note: text is ordered by YoDb in code-point order; the owning source's collation differs for: crm",))
+        self.assertEqual(sort.detail, ())
 
     def test_no_note_when_the_owning_source_orders_like_yodb_or_the_order_is_not_text(self) -> None:
         for raw_order, active in (

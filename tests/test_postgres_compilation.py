@@ -51,7 +51,7 @@ class PostgresQueryCompilerTests(unittest.TestCase):
                     'SELECT "account_uuid" AS "id", "company_name" AS "name", "account_status" AS "status"',
                     'FROM "public"."accounts"',
                     'WHERE "account_status" = %s',
-                    'ORDER BY "company_name" ASC, "account_uuid" ASC',
+                    'ORDER BY "company_name" COLLATE "C" ASC, "account_uuid" ASC',
                     'LIMIT %s',
                 )
             ),

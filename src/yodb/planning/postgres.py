@@ -53,7 +53,7 @@ POSTGRES_CAPABILITIES = SourceCapabilities(
     supports_order=True,
     supports_limit=True,
     orderable_types=_SCALAR_TYPES,
-    text_ordering=TextOrdering.SOURCE_DEFINED,  # the database's collation
+    text_ordering=TextOrdering.CODE_POINT,  # the compiler orders text with COLLATE "C", like the coordinator
     maximum_rows=None,
     key_lookup=KeyLookupCapability(maximum_keys=5_000),  # one IN list, under the driver's parameter limit
     vector_search=VectorSearchCapability(  # requires the pgvector extension on the source
