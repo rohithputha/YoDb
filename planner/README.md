@@ -37,6 +37,7 @@ then, with the Yelp data layer loaded and `benchmark/questions.jsonl` built:
 
 ```bash
 export YODB_CONN_YELP="host=... dbname=yelp user=yodb_ro password=yodb_ro"
+PYTHONPATH=src python planner/ask.py "Which reviews similar to 'slow service and a long wait' are of open businesses in Tampa?"   # one question, every stage shown
 PYTHONPATH=src python benchmark/harness.py planner --endpoint http://localhost:8000/v1 --schema full        --split held_out
 PYTHONPATH=src python benchmark/harness.py planner --endpoint http://localhost:8000/v1 --schema descriptions --split held_out
 PYTHONPATH=src python benchmark/harness.py planner --endpoint http://localhost:8000/v1 --schema retrieved   --split held_out
