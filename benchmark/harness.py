@@ -97,6 +97,10 @@ def substitute_ids(step: Any, previous_rows: Sequence[Sequence[Mapping[str, Any]
             if not 0 <= reference["step"] < len(previous_rows):
                 raise BadReference(f"'$ids' refers to step {reference['step']}, but only {len(previous_rows)} earlier step(s) exist (steps are numbered from 0; a query may only use the ids of a query before it).")
             rows = previous_rows[reference["step"]]
+            if rows and not any(reference["field"] in row for row in rows):
+                available = sorted({key for row in rows for key in row if key == "id" or key.endswith(".id")})
+                raise BadReference(f"'$ids' asks for field {reference['field']!r} of step {reference['step']}, which its rows do not have; "
+                                   f"the id fields of that step are {available} ('id' is the root dataset's id, '<alias>.id' a traversed one's).")
             values = list(dict.fromkeys(row.get(reference["field"]) for row in rows if row.get(reference["field"]) is not None))
             return values[:MAXIMUM_IDS]
         return {key: substitute_ids(value, previous_rows) for key, value in step.items()}

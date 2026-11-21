@@ -192,6 +192,10 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(outcome.prediction.error, "plan_shape_invalid")
         self.assertIn("refers to step 1, but only 1 earlier step(s) exist", outcome.attempts[0].error)
         self.assertEqual(outcome.prediction.repairs, 2)
+        wrong_field = json.loads(json.dumps(bad))
+        wrong_field["plan"][1]["where"]["value"]["$ids"] = {"step": 0, "field": "customer.id"}
+        outcome = self.planner(ScriptedGenerator([wrong_field] * 3)).plan("Ann's tickets")
+        self.assertIn("asks for field 'customer.id' of step 0, which its rows do not have; the id fields of that step are ['id']", outcome.attempts[0].error)
 
     def test_a_refusal_is_a_refused_prediction_with_its_code(self) -> None:
         refusal = {"refuse": {"code": "unsupported", "reason": "No counting."}}
