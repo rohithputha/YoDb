@@ -104,6 +104,19 @@ class IndependentJoinTests(unittest.TestCase):
         self.assertEqual(got, expected)
         self.assertTrue(got)
 
+    def test_a_lopsided_join_probes_by_keys_even_when_both_sides_would_fit(self) -> None:
+        """Reading 10,000 filtered rows whole to match 20 driver rows moves far more than probing with 20 keys."""
+
+        for customers, tickets in ((20, 10_000), (1_000, 6_000)):
+            with self.subTest(customers=customers, tickets=tickets):
+                explanation = engine(shop_world(), statistics=counts(customers, tickets)).explain(BOTH_FILTERED)
+                self.assertIn("strategy_join=sequential", explanation.optimizer)
+                self.assertTrue(any("far more than probing" in note for note in explanation.optimizer), explanation.optimizer)
+        balanced = engine(shop_world(), statistics=counts(1_000, 3_000)).explain(BOTH_FILTERED)
+        self.assertIn("strategy_join=parallel", balanced.optimizer)
+        loose = engine(shop_world(), statistics=counts(20, 10_000), join_policy=JoinPolicy(parallel_ratio=1000, parallel_maximum_other_rows=50_000)).explain(BOTH_FILTERED)
+        self.assertIn("strategy_join=parallel", loose.optimizer)
+
     def test_parallel_always_needs_no_statistics_and_never_turns_it_off(self) -> None:
         world = SlowWorld(shop_world())
         db = engine(world, join_policy=JoinPolicy(parallel="always"))

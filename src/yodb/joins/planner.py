@@ -238,9 +238,14 @@ class JoinPlanner:
         driver_rows, other_rows = _estimate(driver, statistics), _estimate(other, statistics)
         if driver_rows is None or other_rows is None:
             return None, ("strategy_join=sequential", "reason=no statistics to tell whether both sides fit on their own")
-        if driver_rows <= self._policy.maximum_driver_rows and other_rows <= self._policy.maximum_probe_rows:
-            return True, ("strategy_join=parallel", f"reason=both sides are expected to fit ({driver_rows:.0f} and {other_rows:.0f} rows)")
-        return None, ("strategy_join=sequential", f"reason=a side is expected too large to read on its own ({driver_rows:.0f} and {other_rows:.0f} rows)")
+        if driver_rows > self._policy.maximum_driver_rows or other_rows > self._policy.maximum_probe_rows:
+            return None, ("strategy_join=sequential", f"reason=a side is expected too large to read on its own ({driver_rows:.0f} and {other_rows:.0f} rows)")
+        if other_rows > self._policy.parallel_maximum_other_rows or other_rows > self._policy.parallel_ratio * max(driver_rows, 1.0):
+            return None, (
+                "strategy_join=sequential",
+                f"reason=reading the other side whole ({other_rows:.0f} rows) would move far more than probing it with the driver's keys ({driver_rows:.0f} rows)",
+            )
+        return True, ("strategy_join=parallel", f"reason=both sides are expected to fit and to be of a size ({driver_rows:.0f} and {other_rows:.0f} rows)")
 
     def _choose_driver(self, step: Traversal, left: PlannedQuery, right: PlannedQuery, left_where, right_where) -> tuple[str, tuple[str, ...]]:
         """Which side to run first: the one expected to produce fewer rows (a left join always starts at the root)."""

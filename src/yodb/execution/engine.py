@@ -110,6 +110,7 @@ class QueryExecutionEngine:
             catalog_fingerprint=catalog_fingerprint,
             reports=reports,
             applied=applied(planned.explain.rules),
+            activity={"reads": trace.reads, "rows_read": trace.rows_read},
         )
 
     def explain(self, raw_query: Mapping[str, Any]):

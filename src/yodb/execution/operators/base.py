@@ -47,12 +47,21 @@ class ExecutionTrace:
     reports: dict[str, Any] = field(default_factory=dict)
     # Reads that ran at the same time: (how many, in which handler), for explain-after-the-fact and tests.
     concurrent_batches: list[tuple[int, str]] = field(default_factory=list)
+    # Every native read the plan issued (scans, probe batches, edge reads) and the rows they brought back.
+    reads: int = 0
+    rows_read: int = 0
+
+    def record_read(self, rows: int) -> None:
+        self.reads += 1
+        self.rows_read += rows
 
     def absorb(self, other: "ExecutionTrace") -> None:
         """Merge a trace filled in by a concurrent task (its reports combine with ours when they can)."""
 
         self.scan_actuals.extend(other.scan_actuals)
         self.concurrent_batches.extend(other.concurrent_batches)
+        self.reads += other.reads
+        self.rows_read += other.rows_read
         for name, report in other.reports.items():
             mine = self.reports.get(name)
             self.reports[name] = report.combined_with(mine) if mine is not None and hasattr(report, "combined_with") else report

@@ -178,7 +178,7 @@ class LoopTests(unittest.TestCase):
         }
         prediction = self.planner(ScriptedGenerator([plan])).plan("Ann's open tickets").prediction
         self.assertEqual(prediction.answer, ["t1", "t3"])
-        self.assertEqual(prediction.records_transferred, 4)
+        self.assertGreaterEqual(prediction.records_transferred, 4 + 4)        # the ids carried between the steps, plus every row the sources handed over
 
     def test_a_refusal_is_a_refused_prediction_with_its_code(self) -> None:
         refusal = {"refuse": {"code": "unsupported", "reason": "No counting."}}

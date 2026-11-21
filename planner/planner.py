@@ -117,6 +117,7 @@ class NaturalLanguagePlanner:
             prediction.plan_valid = False
             prediction.error = _code_of(last_error) or "plan_rejected"
             prediction.plan = _last_plan(outcome.attempts)
+            prediction.notes = f"{last_error}\n--- last output ---\n{outcome.attempts[-1].text[:800]}" if outcome.attempts else last_error
         elif "refuse" in accepted:
             prediction.refused = True
             prediction.refusal_code = accepted["refuse"].get("code")

@@ -64,11 +64,12 @@ class Prediction:
     tokens_in: int = 0
     tokens_out: int = 0
     repairs: int = 0
-    records_transferred: int = 0                               # intermediate records moved between steps/sources
+    records_transferred: int = 0                               # rows sources handed to the coordinator (join sides, probe batches, chain steps) + ids carried between steps
     native_queries: int = 0                                    # native statements the system sent to a store (baselines)
     native_errors: int = 0                                     # of which the store rejected (H1's "invalid native queries")
     tool_calls: int = 0                                        # tool invocations (baselines)
     run: int = 0                                               # repetition index
+    notes: str | None = None                                   # for the error analysis: the model's last output when its plan was rejected
 
 
 class System(Protocol):
@@ -121,6 +122,7 @@ def run_plan(db, plan: Sequence[Mapping[str, Any]], answer_field: str, answer_da
     started = time.perf_counter()
     rows_per_step: list[list[dict[str, Any]]] = []
     transferred = 0
+    reads = 0
     try:
         for index, step in enumerate(plan):
             concrete = substitute_ids(step, rows_per_step)
@@ -132,6 +134,9 @@ def run_plan(db, plan: Sequence[Mapping[str, Any]], answer_field: str, answer_da
                     continue
             result = db.query(concrete, timeout_seconds=timeout)
             rows_per_step.append([dict(row) for row in result.rows])
+            activity = getattr(result, "activity", {}) or {}
+            transferred += int(activity.get("rows_read", len(result.rows)))     # every row a source handed over, join sides and probe batches included
+            reads += int(activity.get("reads", 0))
         prediction.plan_valid = True
     except YoDbError as error:
         prediction.error = error.code.value
@@ -148,7 +153,7 @@ def run_plan(db, plan: Sequence[Mapping[str, Any]], answer_field: str, answer_da
         prediction.evidence[answer_dataset] = list(dict.fromkeys([*prediction.evidence[answer_dataset], *prediction.answer]))
     prediction.sources = kinds_of(db, plan)
     prediction.records_transferred = transferred
-    prediction.native_queries = sum(_reads_of(db, step) for step in plan)      # validated before they ran: none invalid
+    prediction.native_queries = reads or sum(_reads_of(db, step) for step in plan)      # validated before they ran: none invalid
     return prediction
 
 

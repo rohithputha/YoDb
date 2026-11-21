@@ -340,9 +340,10 @@ TEMPLATES: tuple[Template, ...] = (
     ),
     # ================= stress (40): must be refused or pushed back on =================
     Template(
-        "X01", "stress", "Which businesses in {city} have a rating above {stars_hi}?",
-        ("city", "stars_hi"), 5, plan=(q("business", ["name"], {"all": [p("city", "eq", "{city}"), p("rating", "gt", "{stars_hi}")]}),),
-        expect_error="field_not_found", notes="the natural question names a field that does not exist; the gold is the refusal",
+        "X01", "stress", "Which businesses in {city} rated at least {stars_hi} stars have a price range of $$ or less?",
+        ("city", "stars_hi"), 5, plan=(q("business", ["name"], {"all": [p("city", "eq", "{city}"), p("stars", "gte", "{stars_hi}"), p("price_range", "lte", "$$")]}),),
+        expect_error="field_not_found", notes="the question needs a field the catalog does not have (price range); the gold is the refusal. "
+                                              "An earlier wording, 'a rating above X', was a synonym of 'stars' and every system rightly answered it",
     ),
     Template(
         "X02", "stress", "List the menus of businesses in {city}.", ("city",), 5,

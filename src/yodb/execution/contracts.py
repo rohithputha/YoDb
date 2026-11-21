@@ -28,6 +28,8 @@ class QueryExecutionResult:
     reports: Mapping[str, Any] = field(default_factory=dict)
     # The rules the query named, with their definitions: {"rules": [{"name", "dataset", "definition"}]}.
     applied: Mapping[str, Any] = field(default_factory=dict)
+    # What the execution did: {"reads": native reads issued, "rows_read": rows they brought to the coordinator}.
+    activity: Mapping[str, int] = field(default_factory=dict)
 
     @classmethod
     def from_rows(
@@ -38,6 +40,7 @@ class QueryExecutionResult:
         catalog_fingerprint: str,
         reports: Mapping[str, Any] | None = None,
         applied: Mapping[str, Any] | None = None,
+        activity: Mapping[str, int] | None = None,
     ) -> "QueryExecutionResult":
         """Freeze adapter-returned row mappings before exposing them."""
 
@@ -47,6 +50,7 @@ class QueryExecutionResult:
             catalog_fingerprint=catalog_fingerprint,
             reports=MappingProxyType(dict(reports or {})),
             applied=MappingProxyType(dict(applied or {})),
+            activity=MappingProxyType(dict(activity or {})),
         )
 
 

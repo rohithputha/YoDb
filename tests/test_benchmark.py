@@ -235,7 +235,9 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(set(prediction.evidence["customer"]), {"c1"})
         self.assertEqual(set(prediction.evidence["ticket"]), {"t1", "t2", "t3", "t13"})
         self.assertEqual(prediction.sources, ["graph", "relational"])
-        self.assertEqual(prediction.records_transferred, 4)
+        # every row a source handed over (Ann, the 4 edge pairs, the 4 tickets reached, the 2 open ones) + the 4 ids carried to step 2
+        self.assertEqual(prediction.records_transferred, 15)
+        self.assertEqual(prediction.native_queries, 4)
         self.assertIsNotNone(prediction.latency_ms)
 
     def test_an_empty_first_step_ends_the_chain_without_a_second_read(self) -> None:

@@ -33,6 +33,13 @@ class JoinPolicy:
     # statistics expect both sides to fit their guards; "always" whenever both sides have a filter; "never"
     # keeps every join sequential (the forced-sequential ablation).
     parallel: Literal["auto", "always", "never"] = "auto"
+    # ``auto`` reads the other side whole (instead of probing it with the driver's keys) only when that is expected to
+    # move about as many rows as probing would: the other side's estimate must be at most ``parallel_ratio`` times the
+    # driver's and at most ``parallel_maximum_other_rows``.  Otherwise the time saved by reading both sides at once is
+    # lost many times over in rows transferred and matched (measured: a 20-row driver against 10,000 filtered rows ran
+    # 10-100x slower read whole than probed in batches of keys).
+    parallel_ratio: float = 4.0
+    parallel_maximum_other_rows: int = 5_000
 
     def __post_init__(self) -> None:
         if min(self.batch_size, self.maximum_driver_rows, self.maximum_probe_rows, self.maximum_joined_rows) < 1:

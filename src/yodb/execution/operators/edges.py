@@ -22,6 +22,8 @@ def execute(ctx: ExecutionContext, node: GraphEdgeScan, run: Run) -> tuple[dict[
 
     compiled = ctx.compilers.adapter_for(node.source_kind).compile_edges(node)
     rows = ctx.executors.adapter_for(compiled.source_kind).execute(compiled, timeout_seconds=run.remaining())
+    if run.trace is not None:
+        run.trace.record_read(len(rows))
     if node.maximum_rows is not None and len(rows) > node.maximum_rows:
         fail(
             ErrorCode.QUERY_COORDINATOR_LIMIT_EXCEEDED,

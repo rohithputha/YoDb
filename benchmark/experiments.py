@@ -5,6 +5,7 @@
     PYTHONPATH=src python benchmark/experiments.py e2 --repeat 5            # one experiment
     PYTHONPATH=src python benchmark/experiments.py e1 --workers 8 --resume  # model-bound runs, 8 questions at a time, continuing a run that stopped
     PYTHONPATH=src python benchmark/experiments.py tables                   # re-make the tables from the runs on disk
+    PYTHONPATH=src python benchmark/experiments.py redo --only X01 --workers 8   # answer some questions again in every model-bound run (after a template changed)
 
 E1 (RQ1)  accuracy by query class: the planner (full schema) against B1, B2 and B3, on the held-out split.
 E2 (RQ2)  latency of the DAG executor against forced-sequential execution, on the same gold plans
@@ -128,7 +129,8 @@ def _f(value, digits=3) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("experiment", choices=["all", "e1", "e2", "e3", "ablations", "tables"])
+    parser.add_argument("experiment", choices=["all", "e1", "e2", "e3", "ablations", "tables", "redo"])
+    parser.add_argument("--only", nargs="*", default=(), help="redo: question id prefixes to answer again in every model-bound run (their old predictions are dropped)")
     parser.add_argument("--out", type=Path, default=HERE / "results")
     parser.add_argument("--questions", type=Path, default=HERE / "questions.jsonl")
     parser.add_argument("--split", default="held_out", choices=["held_out", "tune", "all"])
@@ -166,6 +168,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.experiment in ("all", "ablations"):
         for name, arguments in ABLATIONS:
             runs["Ablations"][name] = run_system(name, arguments, args.out, common=common, resources=resources, **model_bound)
+    if args.experiment == "redo":
+        if not args.only:
+            parser.error("redo needs --only <id prefix>...")
+        for name, arguments in dict((*E1_SYSTEMS, *E3_SYSTEMS, *ABLATIONS)).items():
+            path = args.out / "runs" / f"{name}.jsonl"
+            if not path.is_file():
+                continue
+            kept = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip() and not any(json.loads(line)["id"].startswith(prefix) for prefix in args.only)]
+            path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+            run_system(name, arguments, args.out, common=[*common, "--only", *args.only], resources={}, workers=args.workers, resume=True)
+        args.experiment = "tables"
     if args.experiment == "tables":
         runs = {
             "E1": {n: args.out / "runs" / f"{n}.jsonl" for n, _ in E1_SYSTEMS},
