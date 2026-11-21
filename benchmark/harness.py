@@ -81,12 +81,21 @@ class System(Protocol):
 # --- running a typed plan through YoDb (shared by the gold runner and any planner) ----------------------
 
 
+class BadReference(ValueError):
+    """A ``$ids`` reference that cannot be resolved (the model's mistake, reported back to it)."""
+
+
 def substitute_ids(step: Any, previous_rows: Sequence[Sequence[Mapping[str, Any]]]) -> Any:
     """Replace ``{"$ids": {"step": i, "field": f}}`` by the distinct values of ``f`` in step ``i``'s rows."""
 
     if isinstance(step, dict):
         if set(step) == {"$ids"}:
             reference = step["$ids"]
+            if not isinstance(reference, Mapping) or not isinstance(reference.get("step"), int) or isinstance(reference.get("step"), bool) \
+                    or not isinstance(reference.get("field"), str):
+                raise BadReference("'$ids' must be an object {\"step\": <0-based index of an earlier query>, \"field\": \"<its row field>\"}.")
+            if not 0 <= reference["step"] < len(previous_rows):
+                raise BadReference(f"'$ids' refers to step {reference['step']}, but only {len(previous_rows)} earlier step(s) exist (steps are numbered from 0; a query may only use the ids of a query before it).")
             rows = previous_rows[reference["step"]]
             values = list(dict.fromkeys(row.get(reference["field"]) for row in rows if row.get(reference["field"]) is not None))
             return values[:MAXIMUM_IDS]
@@ -140,6 +149,11 @@ def run_plan(db, plan: Sequence[Mapping[str, Any]], answer_field: str, answer_da
         prediction.plan_valid = True
     except YoDbError as error:
         prediction.error = error.code.value
+        prediction.plan_valid = False
+        prediction.latency_ms = (time.perf_counter() - started) * 1000
+        return prediction
+    except BadReference:
+        prediction.error = "plan_shape_invalid"
         prediction.plan_valid = False
         prediction.latency_ms = (time.perf_counter() - started) * 1000
         return prediction

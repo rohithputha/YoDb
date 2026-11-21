@@ -180,6 +180,19 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(prediction.answer, ["t1", "t3"])
         self.assertGreaterEqual(prediction.records_transferred, 4 + 4)        # the ids carried between the steps, plus every row the sources handed over
 
+    def test_an_ids_reference_to_a_missing_step_is_a_coded_rejection_the_model_can_repair(self) -> None:
+        bad = {
+            "plan": [
+                {"from": {"dataset": "customer"}, "where": {"field": "name", "op": "eq", "value": "Ann"}, "page": {"first": 500}},
+                {"from": {"dataset": "ticket"}, "where": {"field": "id", "op": "in", "value": {"$ids": {"step": 1, "field": "ticket.id"}}}, "page": {"first": 500}},
+            ],
+            "answer_field": "id", "sources": ["relational"],
+        }
+        outcome = self.planner(ScriptedGenerator([bad, bad, bad])).plan("Ann's tickets")
+        self.assertEqual(outcome.prediction.error, "plan_shape_invalid")
+        self.assertIn("refers to step 1, but only 1 earlier step(s) exist", outcome.attempts[0].error)
+        self.assertEqual(outcome.prediction.repairs, 2)
+
     def test_a_refusal_is_a_refused_prediction_with_its_code(self) -> None:
         refusal = {"refuse": {"code": "unsupported", "reason": "No counting."}}
         prediction = self.planner(ScriptedGenerator([refusal])).plan("How many tickets are there?").prediction

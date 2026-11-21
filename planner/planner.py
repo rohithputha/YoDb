@@ -22,7 +22,7 @@ from typing import Any
 from yodb.errors import YoDbError
 from yodb.mcp_server import error_text
 
-from benchmark.harness import Prediction, kinds_of, run_plan, substitute_ids
+from benchmark.harness import BadReference, Prediction, kinds_of, run_plan, substitute_ids
 from .grammar import OUTPUT
 from .llm import Generation, Generator
 from .prompt import EXAMPLES, messages as build_messages, repair_message
@@ -147,11 +147,14 @@ class NaturalLanguagePlanner:
             raise PlanRejected("[plan_shape_invalid]: 'answer_field' must name the row field whose values answer the question.")
         sample_rows = [[{key: "sample-id" for key in _id_fields(step)}] for step in plan]
         for index, step in enumerate(plan):
-            concrete = substitute_ids(step, sample_rows[:index])
+            prefix = f"in plan[{index}] " if len(plan) > 1 else ""
+            try:
+                concrete = substitute_ids(step, sample_rows[:index])
+            except BadReference as error:
+                raise PlanRejected(f"[plan_shape_invalid]: {prefix}{error}") from error
             try:
                 self.db.explain(concrete)
             except YoDbError as error:
-                prefix = f"in plan[{index}] " if len(plan) > 1 else ""
                 raise PlanRejected(prefix + error_text(error)) from error
         last = plan[-1]
         field_name = output["answer_field"]
