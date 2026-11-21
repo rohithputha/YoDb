@@ -1,0 +1,2783 @@
+{
+  "E1": {
+    "planner-full": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 0.98,
+          "answer_em_ci": [
+            0.94,
+            1.0
+          ],
+          "answer_f1": 0.996,
+          "answer_f1_ci": [
+            0.988,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.996,
+          "provenance_precision_ci": [
+            0.988,
+            1.0
+          ],
+          "provenance_recall": 0.996,
+          "provenance_recall_ci": [
+            0.988,
+            1.0
+          ],
+          "provenance_f1": 0.996,
+          "provenance_f1_ci": [
+            0.988,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 32277.460917830467,
+          "latency_ms_p95": 62253.82290794514,
+          "retrieval_ms_p50": 442.020341521129,
+          "retrieval_ms_p95": 982.3752819560468,
+          "tokens_in_mean": 3109.78,
+          "tokens_out_mean": 89.1,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 0.7843137254901961,
+          "answer_em_ci": [
+            0.6667,
+            0.8824
+          ],
+          "answer_f1": 0.8403430914355476,
+          "answer_f1_ci": [
+            0.7361,
+            0.9303
+          ],
+          "plan_valid": 0.8627450980392157,
+          "plan_valid_ci": [
+            0.7647,
+            0.9412
+          ],
+          "source_f1": 0.8627450980392157,
+          "source_f1_ci": [
+            0.7647,
+            0.9412
+          ],
+          "provenance_precision": 0.8289916455194093,
+          "provenance_precision_ci": [
+            0.7212,
+            0.921
+          ],
+          "provenance_recall": 0.8505248253147413,
+          "provenance_recall_ci": [
+            0.7451,
+            0.9412
+          ],
+          "provenance_f1": 0.837129052337781,
+          "provenance_f1_ci": [
+            0.7333,
+            0.9293
+          ],
+          "source_micro_f1": 0.9263157894736842,
+          "latency_ms_p50": 58414.439669344574,
+          "latency_ms_p95": 152938.4284892585,
+          "retrieval_ms_p50": 1071.0454820655286,
+          "retrieval_ms_p95": 1692.3376137623563,
+          "tokens_in_mean": 5851.392156862745,
+          "tokens_out_mean": 278.47058823529414,
+          "repairs_mean": 0.803921568627451,
+          "records_transferred_mean": 9.803921568627452,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "query_shape_invalid"
+          ]
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 0.875,
+          "answer_em_ci": [
+            0.7917,
+            0.9444
+          ],
+          "answer_f1": 0.9289322979580396,
+          "answer_f1_ci": [
+            0.8658,
+            0.9765
+          ],
+          "plan_valid": 0.9722222222222222,
+          "plan_valid_ci": [
+            0.9306,
+            1.0
+          ],
+          "source_f1": 0.9583333333333334,
+          "source_f1_ci": [
+            0.912,
+            0.9907
+          ],
+          "provenance_precision": 0.9216628866649326,
+          "provenance_precision_ci": [
+            0.872,
+            0.9569
+          ],
+          "provenance_recall": 0.9317849723841929,
+          "provenance_recall_ci": [
+            0.8713,
+            0.9819
+          ],
+          "provenance_f1": 0.9117111356701558,
+          "provenance_f1_ci": [
+            0.8537,
+            0.9573
+          ],
+          "source_micro_f1": 0.9750889679715302,
+          "latency_ms_p50": 40229.557630140334,
+          "latency_ms_p95": 83427.22753612325,
+          "retrieval_ms_p50": 78.4646375104785,
+          "retrieval_ms_p95": 563.6678066803142,
+          "tokens_in_mean": 3967.2083333333335,
+          "tokens_out_mean": 179.72222222222223,
+          "repairs_mean": 0.25,
+          "records_transferred_mean": 11.402777777777779,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "relationship_not_applicable"
+          ]
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 0.9393939393939394,
+          "answer_em_ci": [
+            0.8485,
+            1.0
+          ],
+          "answer_f1": 0.9393939393939394,
+          "answer_f1_ci": [
+            0.8485,
+            1.0
+          ],
+          "plan_valid": 0.9393939393939394,
+          "plan_valid_ci": [
+            0.8485,
+            1.0
+          ],
+          "latency_ms_p50": 15115.161456167698,
+          "latency_ms_p95": 26347.571446094655,
+          "retrieval_ms_p50": 16.907790210098028,
+          "retrieval_ms_p95": 17.133021587505937,
+          "tokens_in_mean": 3105.060606060606,
+          "tokens_out_mean": 47.09090909090909,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 16.151515151515152,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 0.8883495145631068,
+          "answer_em_ci": [
+            0.8447,
+            0.9272
+          ],
+          "answer_f1": 0.924954481146562,
+          "answer_f1_ci": [
+            0.8896,
+            0.9567
+          ],
+          "plan_valid": 0.9466019417475728,
+          "plan_valid_ci": [
+            0.9126,
+            0.9757
+          ],
+          "source_f1": 0.9421965317919075,
+          "source_f1_ci": [
+            0.9075,
+            0.973
+          ],
+          "provenance_precision": 0.9158283338807226,
+          "provenance_precision_ci": [
+            0.8761,
+            0.9495
+          ],
+          "provenance_recall": 0.926388925449212,
+          "provenance_recall_ci": [
+            0.8857,
+            0.9604
+          ],
+          "provenance_f1": 0.9140854533958268,
+          "provenance_f1_ci": [
+            0.873,
+            0.948
+          ],
+          "source_micro_f1": 0.9724409448818898,
+          "latency_ms_p50": 37119.17324177921,
+          "latency_ms_p95": 100010.75926830526,
+          "retrieval_ms_p50": 162.66826586797833,
+          "retrieval_ms_p95": 1387.5771423336118,
+          "tokens_in_mean": 4087.4563106796118,
+          "tokens_out_mean": 160.9271844660194,
+          "repairs_mean": 0.28640776699029125,
+          "records_transferred_mean": 9.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "query_shape_invalid",
+            "relationship_not_applicable"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    },
+    "tool-agent": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 0.94,
+          "answer_em_ci": [
+            0.86,
+            1.0
+          ],
+          "answer_f1": 0.956,
+          "answer_f1_ci": [
+            0.896,
+            1.0
+          ],
+          "plan_valid": 0.96,
+          "plan_valid_ci": [
+            0.9,
+            1.0
+          ],
+          "source_f1": 0.96,
+          "source_f1_ci": [
+            0.9,
+            1.0
+          ],
+          "provenance_precision": 0.956,
+          "provenance_precision_ci": [
+            0.896,
+            1.0
+          ],
+          "provenance_recall": 0.956,
+          "provenance_recall_ci": [
+            0.896,
+            1.0
+          ],
+          "provenance_f1": 0.956,
+          "provenance_f1_ci": [
+            0.896,
+            1.0
+          ],
+          "source_micro_f1": 0.9846153846153847,
+          "latency_ms_p50": 30214.507883647457,
+          "latency_ms_p95": 55528.40220218058,
+          "retrieval_ms_p50": 295.44391739182174,
+          "retrieval_ms_p95": 1001.8069684971124,
+          "tokens_in_mean": 6821.3,
+          "tokens_out_mean": 154.66,
+          "repairs_mean": 0.12,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 1.28,
+          "native_errors_mean": 0.32,
+          "tool_calls_mean": 2.4,
+          "native_error_rate": 0.25,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 0.9411764705882353,
+          "answer_em_ci": [
+            0.8824,
+            1.0
+          ],
+          "answer_f1": 0.980108643230885,
+          "answer_f1_ci": [
+            0.9408,
+            1.0
+          ],
+          "plan_valid": 0.9803921568627451,
+          "plan_valid_ci": [
+            0.9412,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.934435415439357,
+          "provenance_precision_ci": [
+            0.8749,
+            0.9813
+          ],
+          "provenance_recall": 0.9323810503041979,
+          "provenance_recall_ci": [
+            0.8783,
+            0.9748
+          ],
+          "provenance_f1": 0.929706470971725,
+          "provenance_f1_ci": [
+            0.8731,
+            0.9725
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 31518.052078783512,
+          "latency_ms_p95": 197364.65011606924,
+          "retrieval_ms_p50": 64.9385810829699,
+          "retrieval_ms_p95": 316.2414678372443,
+          "tokens_in_mean": 12234.35294117647,
+          "tokens_out_mean": 449.94117647058823,
+          "repairs_mean": 0.0392156862745098,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 1.2549019607843137,
+          "native_errors_mean": 0.058823529411764705,
+          "tool_calls_mean": 2.2941176470588234,
+          "native_error_rate": 0.046875,
+          "errors": []
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 0.6944444444444444,
+          "answer_em_ci": [
+            0.5833,
+            0.7917
+          ],
+          "answer_f1": 0.745504586927026,
+          "answer_f1_ci": [
+            0.6349,
+            0.8426
+          ],
+          "plan_valid": 0.75,
+          "plan_valid_ci": [
+            0.6389,
+            0.8472
+          ],
+          "source_f1": 0.7268518518518517,
+          "source_f1_ci": [
+            0.662,
+            0.787
+          ],
+          "provenance_precision": 0.64503859813439,
+          "provenance_precision_ci": [
+            0.5379,
+            0.7389
+          ],
+          "provenance_recall": 0.6735607382484711,
+          "provenance_recall_ci": [
+            0.5785,
+            0.7698
+          ],
+          "provenance_f1": 0.6481161408091516,
+          "provenance_f1_ci": [
+            0.5415,
+            0.7417
+          ],
+          "source_micro_f1": 0.774468085106383,
+          "latency_ms_p50": 71478.07210986502,
+          "latency_ms_p95": 526602.3725785782,
+          "retrieval_ms_p50": 26.480733416974545,
+          "retrieval_ms_p95": 27433.4437642481,
+          "tokens_in_mean": 15789.625,
+          "tokens_out_mean": 1624.9583333333333,
+          "repairs_mean": 0.125,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 2.9027777777777777,
+          "native_errors_mean": 0.9027777777777778,
+          "tool_calls_mean": 4.013888888888889,
+          "native_error_rate": 0.31100478468899523,
+          "errors": []
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 0.7272727272727273,
+          "answer_em_ci": [
+            0.5455,
+            0.8788
+          ],
+          "answer_f1": 0.7272727272727273,
+          "answer_f1_ci": [
+            0.5455,
+            0.8788
+          ],
+          "plan_valid": 0.7272727272727273,
+          "plan_valid_ci": [
+            0.5455,
+            0.8788
+          ],
+          "latency_ms_p50": 6436.541084200144,
+          "latency_ms_p95": 1559193.1131056487,
+          "retrieval_ms_p50": 0.0,
+          "retrieval_ms_p95": 395.94999887049136,
+          "tokens_in_mean": 15543.151515151516,
+          "tokens_out_mean": 3576.848484848485,
+          "repairs_mean": 0.5757575757575758,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.5757575757575758,
+          "native_errors_mean": 0.24242424242424243,
+          "tool_calls_mean": 1.5151515151515151,
+          "native_error_rate": 0.42105263157894735,
+          "errors": [
+            "agent_gave_up"
+          ]
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 0.8203883495145631,
+          "answer_em_ci": [
+            0.767,
+            0.8689
+          ],
+          "answer_f1": 0.8517566556481603,
+          "answer_f1_ci": [
+            0.8033,
+            0.8988
+          ],
+          "plan_valid": 0.8543689320388349,
+          "plan_valid_ci": [
+            0.8058,
+            0.9029
+          ],
+          "source_f1": 0.8747591522157997,
+          "source_f1_ci": [
+            0.8382,
+            0.9094
+          ],
+          "provenance_precision": 0.8202253482837184,
+          "provenance_precision_ci": [
+            0.7654,
+            0.8707
+          ],
+          "provenance_recall": 0.8314902122508903,
+          "provenance_recall_ci": [
+            0.78,
+            0.8806
+          ],
+          "provenance_f1": 0.8201120933977855,
+          "provenance_f1_ci": [
+            0.7661,
+            0.8694
+          ],
+          "source_micro_f1": 0.8822269807280514,
+          "latency_ms_p50": 33900.32495348714,
+          "latency_ms_p95": 386409.70111172646,
+          "retrieval_ms_p50": 24.818040896207094,
+          "retrieval_ms_p95": 811.9844722095877,
+          "tokens_in_mean": 12693.174757281553,
+          "tokens_out_mean": 1289.868932038835,
+          "repairs_mean": 0.17475728155339806,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 1.7281553398058251,
+          "native_errors_mean": 0.44660194174757284,
+          "tool_calls_mean": 2.796116504854369,
+          "native_error_rate": 0.25842696629213485,
+          "errors": [
+            "agent_gave_up"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    },
+    "router": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 0.88,
+          "answer_em_ci": [
+            0.78,
+            0.96
+          ],
+          "answer_f1": 0.9159999999999999,
+          "answer_f1_ci": [
+            0.836,
+            0.982
+          ],
+          "plan_valid": 0.94,
+          "plan_valid_ci": [
+            0.86,
+            1.0
+          ],
+          "source_f1": 0.94,
+          "source_f1_ci": [
+            0.86,
+            1.0
+          ],
+          "provenance_precision": 0.9159999999999999,
+          "provenance_precision_ci": [
+            0.836,
+            0.982
+          ],
+          "provenance_recall": 0.9159999999999999,
+          "provenance_recall_ci": [
+            0.836,
+            0.982
+          ],
+          "provenance_f1": 0.9159999999999999,
+          "provenance_f1_ci": [
+            0.836,
+            0.982
+          ],
+          "source_micro_f1": 0.9767441860465117,
+          "latency_ms_p50": 38962.35437737778,
+          "latency_ms_p95": 122031.16886171047,
+          "retrieval_ms_p50": 450.1069225370884,
+          "retrieval_ms_p95": 2668.292460613884,
+          "tokens_in_mean": 10306.12,
+          "tokens_out_mean": 122.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 1.0,
+          "native_errors_mean": 0.06,
+          "tool_calls_mean": 1.0,
+          "native_error_rate": 0.06,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 0.803921568627451,
+          "answer_em_ci": [
+            0.6863,
+            0.902
+          ],
+          "answer_f1": 0.803921568627451,
+          "answer_f1_ci": [
+            0.6863,
+            0.902
+          ],
+          "plan_valid": 0.9607843137254902,
+          "plan_valid_ci": [
+            0.902,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.7617705564413473,
+          "provenance_precision_ci": [
+            0.6541,
+            0.8601
+          ],
+          "provenance_recall": 0.8033846131216063,
+          "provenance_recall_ci": [
+            0.6861,
+            0.9015
+          ],
+          "provenance_f1": 0.7765881209100738,
+          "provenance_f1_ci": [
+            0.6692,
+            0.8736
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 42133.07094760239,
+          "latency_ms_p95": 86741.65563541465,
+          "retrieval_ms_p50": 158.81288284435868,
+          "retrieval_ms_p95": 696.7055690474808,
+          "tokens_in_mean": 14019.058823529413,
+          "tokens_out_mean": 210.1764705882353,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 1.0784313725490196,
+          "native_errors_mean": 0.0392156862745098,
+          "tool_calls_mean": 1.0784313725490196,
+          "native_error_rate": 0.03636363636363636,
+          "errors": []
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 0.7777777777777778,
+          "answer_em_ci": [
+            0.6806,
+            0.875
+          ],
+          "answer_f1": 0.78584229390681,
+          "answer_f1_ci": [
+            0.6886,
+            0.875
+          ],
+          "plan_valid": 0.9722222222222222,
+          "plan_valid_ci": [
+            0.9306,
+            1.0
+          ],
+          "source_f1": 0.7222222222222222,
+          "source_f1_ci": [
+            0.6759,
+            0.7639
+          ],
+          "provenance_precision": 0.6487627711171972,
+          "provenance_precision_ci": [
+            0.5668,
+            0.7193
+          ],
+          "provenance_recall": 0.7432044660427481,
+          "provenance_recall_ci": [
+            0.6725,
+            0.8104
+          ],
+          "provenance_f1": 0.6787595083348431,
+          "provenance_f1_ci": [
+            0.6069,
+            0.7435
+          ],
+          "source_micro_f1": 0.7478260869565216,
+          "latency_ms_p50": 29408.21870532818,
+          "latency_ms_p95": 114616.7239844568,
+          "retrieval_ms_p50": 68.96948465146124,
+          "retrieval_ms_p95": 698.1555362930523,
+          "tokens_in_mean": 5016.916666666667,
+          "tokens_out_mean": 408.6666666666667,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 1.2361111111111112,
+          "native_errors_mean": 0.041666666666666664,
+          "tool_calls_mean": 1.2222222222222223,
+          "native_error_rate": 0.033707865168539325,
+          "errors": []
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 0.696969696969697,
+          "answer_em_ci": [
+            0.5152,
+            0.8485
+          ],
+          "answer_f1": 0.696969696969697,
+          "answer_f1_ci": [
+            0.5152,
+            0.8485
+          ],
+          "plan_valid": 0.696969696969697,
+          "plan_valid_ci": [
+            0.5152,
+            0.8485
+          ],
+          "latency_ms_p50": 4713.003772310913,
+          "latency_ms_p95": 24405.89595194906,
+          "retrieval_ms_p50": 6.985000101849437,
+          "retrieval_ms_p95": 16.77679901476948,
+          "tokens_in_mean": 2594.757575757576,
+          "tokens_out_mean": 161.8181818181818,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.30303030303030304,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.30303030303030304,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 0.7961165048543689,
+          "answer_em_ci": [
+            0.7379,
+            0.8544
+          ],
+          "answer_f1": 0.8076730347635452,
+          "answer_f1_ci": [
+            0.7515,
+            0.8625
+          ],
+          "plan_valid": 0.9174757281553398,
+          "plan_valid_ci": [
+            0.8738,
+            0.9515
+          ],
+          "source_f1": 0.8670520231213873,
+          "source_f1_ci": [
+            0.8343,
+            0.8998
+          ],
+          "provenance_precision": 0.7593133982598087,
+          "provenance_precision_ci": [
+            0.7033,
+            0.8124
+          ],
+          "provenance_recall": 0.8108863400247387,
+          "provenance_recall_ci": [
+            0.7592,
+            0.8615
+          ],
+          "provenance_f1": 0.776165773216893,
+          "provenance_f1_ci": [
+            0.7224,
+            0.8264
+          ],
+          "source_micro_f1": 0.8676789587852495,
+          "latency_ms_p50": 31889.65284684673,
+          "latency_ms_p95": 117392.20582752023,
+          "retrieval_ms_p50": 91.2116770632565,
+          "retrieval_ms_p95": 1818.14134474844,
+          "tokens_in_mean": 8141.373786407767,
+          "tokens_out_mean": 250.40291262135923,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.9902912621359223,
+          "native_errors_mean": 0.038834951456310676,
+          "tool_calls_mean": 0.9854368932038835,
+          "native_error_rate": 0.0392156862745098,
+          "errors": []
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    },
+    "gold": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 1.0,
+          "provenance_precision_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 1.0,
+          "provenance_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 209.61726363748312,
+          "latency_ms_p95": 602.8506224742159,
+          "retrieval_ms_p50": 209.61726363748312,
+          "retrieval_ms_p95": 602.8506224742159,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 1.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 1.0,
+          "provenance_precision_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 1.0,
+          "provenance_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 1018.8373811542988,
+          "latency_ms_p95": 1730.8281944133341,
+          "retrieval_ms_p50": 1018.8373811542988,
+          "retrieval_ms_p95": 1730.8281944133341,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 2.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.9706041799161346,
+          "provenance_precision_ci": [
+            0.9515,
+            0.9858
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 0.9834968268884088,
+          "provenance_f1_ci": [
+            0.9722,
+            0.9922
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 81.28908346407115,
+          "latency_ms_p95": 611.595899425447,
+          "retrieval_ms_p50": 81.28908346407115,
+          "retrieval_ms_p95": 611.595899425447,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 11.444444444444445,
+          "native_queries_mean": 3.1805555555555554,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "latency_ms_p50": 0.040686922147870064,
+          "latency_ms_p95": 0.1508106710389258,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "dataset_not_found",
+            "field_not_found",
+            "query_value_type_invalid",
+            "refusal",
+            "relationship_not_applicable"
+          ]
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.9877659014679866,
+          "provenance_precision_ci": [
+            0.9793,
+            0.9946
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 0.9931316273755229,
+          "provenance_f1_ci": [
+            0.9882,
+            0.997
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 135.93117892742157,
+          "latency_ms_p95": 1278.4423501230776,
+          "retrieval_ms_p50": 206.5752842463553,
+          "retrieval_ms_p95": 1281.0390680097044,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 4.0,
+          "native_queries_mean": 1.8495145631067962,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": [
+            "dataset_not_found",
+            "field_not_found",
+            "query_value_type_invalid",
+            "refusal",
+            "relationship_not_applicable"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    }
+  },
+  "E2": {
+    "dag": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 1.0,
+          "provenance_precision_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 1.0,
+          "provenance_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 112.51403507776558,
+          "latency_ms_p95": 643.8661551801488,
+          "retrieval_ms_p50": 112.51403507776558,
+          "retrieval_ms_p95": 643.8661551801488,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 212.62,
+          "native_queries_mean": 1.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 1.0,
+          "provenance_precision_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 1.0,
+          "provenance_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 21.04375511407852,
+          "latency_ms_p95": 664.6336489357054,
+          "retrieval_ms_p50": 21.04375511407852,
+          "retrieval_ms_p95": 664.6336489357054,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 575.5294117647059,
+          "native_queries_mean": 2.0588235294117645,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.9706041799161346,
+          "provenance_precision_ci": [
+            0.9515,
+            0.9858
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 0.9834968268884088,
+          "provenance_f1_ci": [
+            0.9722,
+            0.9922
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 68.28506756573915,
+          "latency_ms_p95": 509.7157793818042,
+          "retrieval_ms_p50": 68.28506756573915,
+          "retrieval_ms_p95": 509.7157793818042,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 996.25,
+          "native_queries_mean": 4.138888888888889,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "latency_ms_p50": 0.03218068741261959,
+          "latency_ms_p95": 0.09511031676083803,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "dataset_not_found",
+            "field_not_found",
+            "query_value_type_invalid",
+            "refusal",
+            "relationship_not_applicable"
+          ]
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.9877659014679866,
+          "provenance_precision_ci": [
+            0.9793,
+            0.9946
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 0.9931316273755229,
+          "provenance_f1_ci": [
+            0.9882,
+            0.997
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 37.298708222806454,
+          "latency_ms_p95": 573.576777335256,
+          "retrieval_ms_p50": 52.51440918073058,
+          "retrieval_ms_p95": 583.0067230388522,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 542.2961165048544,
+          "native_queries_mean": 2.1990291262135924,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": [
+            "dataset_not_found",
+            "field_not_found",
+            "query_value_type_invalid",
+            "refusal",
+            "relationship_not_applicable"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    },
+    "sequential": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 1.0,
+          "provenance_precision_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 1.0,
+          "provenance_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 84.1739154420793,
+          "latency_ms_p95": 483.35952837951476,
+          "retrieval_ms_p50": 84.1739154420793,
+          "retrieval_ms_p95": 483.35952837951476,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 212.62,
+          "native_queries_mean": 1.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 1.0,
+          "provenance_precision_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 1.0,
+          "provenance_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 20.357707981020212,
+          "latency_ms_p95": 441.17100606672466,
+          "retrieval_ms_p50": 20.357707981020212,
+          "retrieval_ms_p95": 441.17100606672466,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 475.5686274509804,
+          "native_queries_mean": 2.0980392156862746,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.9706041799161346,
+          "provenance_precision_ci": [
+            0.9515,
+            0.9858
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 0.9834968268884088,
+          "provenance_f1_ci": [
+            0.9722,
+            0.9922
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 67.01750447973609,
+          "latency_ms_p95": 525.3136440878734,
+          "retrieval_ms_p50": 67.01750447973609,
+          "retrieval_ms_p95": 525.3136440878734,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 996.25,
+          "native_queries_mean": 4.138888888888889,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": []
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "latency_ms_p50": 0.033232616260647774,
+          "latency_ms_p95": 0.11020477395504713,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "dataset_not_found",
+            "field_not_found",
+            "query_value_type_invalid",
+            "refusal",
+            "relationship_not_applicable"
+          ]
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 1.0,
+          "answer_em_ci": [
+            1.0,
+            1.0
+          ],
+          "answer_f1": 1.0,
+          "answer_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.9877659014679866,
+          "provenance_precision_ci": [
+            0.9793,
+            0.9946
+          ],
+          "provenance_recall": 1.0,
+          "provenance_recall_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_f1": 0.9931316273755229,
+          "provenance_f1_ci": [
+            0.9882,
+            0.997
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 33.16084062680602,
+          "latency_ms_p95": 510.81716753542423,
+          "retrieval_ms_p50": 49.24143431708217,
+          "retrieval_ms_p95": 514.4482145085931,
+          "tokens_in_mean": 0.0,
+          "tokens_out_mean": 0.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 517.5485436893204,
+          "native_queries_mean": 2.20873786407767,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "native_error_rate": 0.0,
+          "errors": [
+            "dataset_not_found",
+            "field_not_found",
+            "query_value_type_invalid",
+            "refusal",
+            "relationship_not_applicable"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    }
+  },
+  "E3": {
+    "planner-full": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 0.98,
+          "answer_em_ci": [
+            0.94,
+            1.0
+          ],
+          "answer_f1": 0.996,
+          "answer_f1_ci": [
+            0.988,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.996,
+          "provenance_precision_ci": [
+            0.988,
+            1.0
+          ],
+          "provenance_recall": 0.996,
+          "provenance_recall_ci": [
+            0.988,
+            1.0
+          ],
+          "provenance_f1": 0.996,
+          "provenance_f1_ci": [
+            0.988,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 32277.460917830467,
+          "latency_ms_p95": 62253.82290794514,
+          "retrieval_ms_p50": 442.020341521129,
+          "retrieval_ms_p95": 982.3752819560468,
+          "tokens_in_mean": 3109.78,
+          "tokens_out_mean": 89.1,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 0.7843137254901961,
+          "answer_em_ci": [
+            0.6667,
+            0.8824
+          ],
+          "answer_f1": 0.8403430914355476,
+          "answer_f1_ci": [
+            0.7361,
+            0.9303
+          ],
+          "plan_valid": 0.8627450980392157,
+          "plan_valid_ci": [
+            0.7647,
+            0.9412
+          ],
+          "source_f1": 0.8627450980392157,
+          "source_f1_ci": [
+            0.7647,
+            0.9412
+          ],
+          "provenance_precision": 0.8289916455194093,
+          "provenance_precision_ci": [
+            0.7212,
+            0.921
+          ],
+          "provenance_recall": 0.8505248253147413,
+          "provenance_recall_ci": [
+            0.7451,
+            0.9412
+          ],
+          "provenance_f1": 0.837129052337781,
+          "provenance_f1_ci": [
+            0.7333,
+            0.9293
+          ],
+          "source_micro_f1": 0.9263157894736842,
+          "latency_ms_p50": 58414.439669344574,
+          "latency_ms_p95": 152938.4284892585,
+          "retrieval_ms_p50": 1071.0454820655286,
+          "retrieval_ms_p95": 1692.3376137623563,
+          "tokens_in_mean": 5851.392156862745,
+          "tokens_out_mean": 278.47058823529414,
+          "repairs_mean": 0.803921568627451,
+          "records_transferred_mean": 9.803921568627452,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "query_shape_invalid"
+          ]
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 0.875,
+          "answer_em_ci": [
+            0.7917,
+            0.9444
+          ],
+          "answer_f1": 0.9289322979580396,
+          "answer_f1_ci": [
+            0.8658,
+            0.9765
+          ],
+          "plan_valid": 0.9722222222222222,
+          "plan_valid_ci": [
+            0.9306,
+            1.0
+          ],
+          "source_f1": 0.9583333333333334,
+          "source_f1_ci": [
+            0.912,
+            0.9907
+          ],
+          "provenance_precision": 0.9216628866649326,
+          "provenance_precision_ci": [
+            0.872,
+            0.9569
+          ],
+          "provenance_recall": 0.9317849723841929,
+          "provenance_recall_ci": [
+            0.8713,
+            0.9819
+          ],
+          "provenance_f1": 0.9117111356701558,
+          "provenance_f1_ci": [
+            0.8537,
+            0.9573
+          ],
+          "source_micro_f1": 0.9750889679715302,
+          "latency_ms_p50": 40229.557630140334,
+          "latency_ms_p95": 83427.22753612325,
+          "retrieval_ms_p50": 78.4646375104785,
+          "retrieval_ms_p95": 563.6678066803142,
+          "tokens_in_mean": 3967.2083333333335,
+          "tokens_out_mean": 179.72222222222223,
+          "repairs_mean": 0.25,
+          "records_transferred_mean": 11.402777777777779,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "relationship_not_applicable"
+          ]
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 0.9393939393939394,
+          "answer_em_ci": [
+            0.8485,
+            1.0
+          ],
+          "answer_f1": 0.9393939393939394,
+          "answer_f1_ci": [
+            0.8485,
+            1.0
+          ],
+          "plan_valid": 0.9393939393939394,
+          "plan_valid_ci": [
+            0.8485,
+            1.0
+          ],
+          "latency_ms_p50": 15115.161456167698,
+          "latency_ms_p95": 26347.571446094655,
+          "retrieval_ms_p50": 16.907790210098028,
+          "retrieval_ms_p95": 17.133021587505937,
+          "tokens_in_mean": 3105.060606060606,
+          "tokens_out_mean": 47.09090909090909,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 16.151515151515152,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 0.8883495145631068,
+          "answer_em_ci": [
+            0.8447,
+            0.9272
+          ],
+          "answer_f1": 0.924954481146562,
+          "answer_f1_ci": [
+            0.8896,
+            0.9567
+          ],
+          "plan_valid": 0.9466019417475728,
+          "plan_valid_ci": [
+            0.9126,
+            0.9757
+          ],
+          "source_f1": 0.9421965317919075,
+          "source_f1_ci": [
+            0.9075,
+            0.973
+          ],
+          "provenance_precision": 0.9158283338807226,
+          "provenance_precision_ci": [
+            0.8761,
+            0.9495
+          ],
+          "provenance_recall": 0.926388925449212,
+          "provenance_recall_ci": [
+            0.8857,
+            0.9604
+          ],
+          "provenance_f1": 0.9140854533958268,
+          "provenance_f1_ci": [
+            0.873,
+            0.948
+          ],
+          "source_micro_f1": 0.9724409448818898,
+          "latency_ms_p50": 37119.17324177921,
+          "latency_ms_p95": 100010.75926830526,
+          "retrieval_ms_p50": 162.66826586797833,
+          "retrieval_ms_p95": 1387.5771423336118,
+          "tokens_in_mean": 4087.4563106796118,
+          "tokens_out_mean": 160.9271844660194,
+          "repairs_mean": 0.28640776699029125,
+          "records_transferred_mean": 9.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "query_shape_invalid",
+            "relationship_not_applicable"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    },
+    "planner-descriptions": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 0.94,
+          "answer_em_ci": [
+            0.86,
+            1.0
+          ],
+          "answer_f1": 0.9706330645161291,
+          "answer_f1_ci": [
+            0.9154,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.9818000000000001,
+          "provenance_precision_ci": [
+            0.9574,
+            1.0
+          ],
+          "provenance_recall": 0.9711304347826086,
+          "provenance_recall_ci": [
+            0.9155,
+            1.0
+          ],
+          "provenance_f1": 0.9706330645161291,
+          "provenance_f1_ci": [
+            0.9154,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 26992.315561510623,
+          "latency_ms_p95": 36455.9822371928,
+          "retrieval_ms_p50": 487.55844682455063,
+          "retrieval_ms_p95": 1746.9829311128694,
+          "tokens_in_mean": 2773.78,
+          "tokens_out_mean": 89.9,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 0.9607843137254902,
+          "answer_em_ci": [
+            0.902,
+            1.0
+          ],
+          "answer_f1": 0.9735368946333683,
+          "answer_f1_ci": [
+            0.9285,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.9877107919373037,
+          "provenance_precision_ci": [
+            0.9631,
+            1.0
+          ],
+          "provenance_recall": 0.9690967823994621,
+          "provenance_recall_ci": [
+            0.9195,
+            1.0
+          ],
+          "provenance_f1": 0.9699037272566685,
+          "provenance_f1_ci": [
+            0.922,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 53234.45879807696,
+          "latency_ms_p95": 106095.21791082807,
+          "retrieval_ms_p50": 1115.2017088606954,
+          "retrieval_ms_p95": 1809.5342318993062,
+          "tokens_in_mean": 4616.862745098039,
+          "tokens_out_mean": 241.27450980392157,
+          "repairs_mean": 0.6078431372549019,
+          "records_transferred_mean": 9.803921568627452,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 0.8333333333333334,
+          "answer_em_ci": [
+            0.7361,
+            0.9167
+          ],
+          "answer_f1": 0.8381458966565349,
+          "answer_f1_ci": [
+            0.7463,
+            0.9167
+          ],
+          "plan_valid": 0.9305555555555556,
+          "plan_valid_ci": [
+            0.875,
+            0.9861
+          ],
+          "source_f1": 0.9120370370370371,
+          "source_f1_ci": [
+            0.8472,
+            0.9676
+          ],
+          "provenance_precision": 0.8533974563389739,
+          "provenance_precision_ci": [
+            0.7764,
+            0.9204
+          ],
+          "provenance_recall": 0.8495108049595229,
+          "provenance_recall_ci": [
+            0.7638,
+            0.9251
+          ],
+          "provenance_f1": 0.8314017335610453,
+          "provenance_f1_ci": [
+            0.7488,
+            0.9041
+          ],
+          "source_micro_f1": 0.9489051094890512,
+          "latency_ms_p50": 23997.73732549511,
+          "latency_ms_p95": 84872.69839122891,
+          "retrieval_ms_p50": 86.66414581239223,
+          "retrieval_ms_p95": 608.1608538050205,
+          "tokens_in_mean": 3598.4444444444443,
+          "tokens_out_mean": 186.0,
+          "repairs_mean": 0.2638888888888889,
+          "records_transferred_mean": 11.541666666666666,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "query_feature_not_supported",
+            "query_value_type_invalid",
+            "relationship_not_applicable"
+          ]
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 0.8181818181818182,
+          "answer_em_ci": [
+            0.6667,
+            0.9394
+          ],
+          "answer_f1": 0.8181818181818182,
+          "answer_f1_ci": [
+            0.6667,
+            0.9394
+          ],
+          "plan_valid": 0.8181818181818182,
+          "plan_valid_ci": [
+            0.6667,
+            0.9394
+          ],
+          "latency_ms_p50": 14634.879137855023,
+          "latency_ms_p95": 28727.738803904504,
+          "retrieval_ms_p50": 34.00743845850229,
+          "retrieval_ms_p95": 146.88371145166457,
+          "tokens_in_mean": 3225.060606060606,
+          "tokens_out_mean": 77.51515151515152,
+          "repairs_mean": 0.15151515151515152,
+          "records_transferred_mean": 21.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 0.8883495145631068,
+          "answer_em_ci": [
+            0.8447,
+            0.932
+          ],
+          "answer_f1": 0.9006239777251396,
+          "answer_f1_ci": [
+            0.8611,
+            0.9391
+          ],
+          "plan_valid": 0.9466019417475728,
+          "plan_valid_ci": [
+            0.9175,
+            0.9757
+          ],
+          "source_f1": 0.9633911368015414,
+          "source_f1_ci": [
+            0.9364,
+            0.9884
+          ],
+          "provenance_precision": 0.9301032788740383,
+          "provenance_precision_ci": [
+            0.8977,
+            0.96
+          ],
+          "provenance_recall": 0.9199146566392407,
+          "provenance_recall_ci": [
+            0.8817,
+            0.9569
+          ],
+          "provenance_f1": 0.9124720701288543,
+          "provenance_f1_ci": [
+            0.8757,
+            0.9497
+          ],
+          "source_micro_f1": 0.9724409448818898,
+          "latency_ms_p50": 26950.55363816209,
+          "latency_ms_p95": 85900.77346959151,
+          "retrieval_ms_p50": 228.88340638019145,
+          "retrieval_ms_p95": 1503.5500404192135,
+          "tokens_in_mean": 3590.6019417475727,
+          "tokens_out_mean": 158.98058252427185,
+          "repairs_mean": 0.2669902912621359,
+          "records_transferred_mean": 9.825242718446601,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "query_feature_not_supported",
+            "query_value_type_invalid",
+            "relationship_not_applicable"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    },
+    "planner-retrieved": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 0.94,
+          "answer_em_ci": [
+            0.88,
+            1.0
+          ],
+          "answer_f1": 0.984856021835551,
+          "answer_f1_ci": [
+            0.9666,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.99084,
+          "provenance_precision_ci": [
+            0.9754,
+            1.0
+          ],
+          "provenance_recall": 0.9819353023909986,
+          "provenance_recall_ci": [
+            0.9587,
+            1.0
+          ],
+          "provenance_f1": 0.984856021835551,
+          "provenance_f1_ci": [
+            0.9666,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 33627.84964777529,
+          "latency_ms_p95": 84110.20222818479,
+          "retrieval_ms_p50": 219.0800430253148,
+          "retrieval_ms_p95": 1106.5043278504163,
+          "tokens_in_mean": 2797.88,
+          "tokens_out_mean": 90.8,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 0.8823529411764706,
+          "answer_em_ci": [
+            0.7843,
+            0.9608
+          ],
+          "answer_f1": 0.9323766058193754,
+          "answer_f1_ci": [
+            0.8539,
+            0.9907
+          ],
+          "plan_valid": 0.9607843137254902,
+          "plan_valid_ci": [
+            0.902,
+            1.0
+          ],
+          "source_f1": 0.9607843137254902,
+          "source_f1_ci": [
+            0.902,
+            1.0
+          ],
+          "provenance_precision": 0.9390265444784813,
+          "provenance_precision_ci": [
+            0.8705,
+            0.9908
+          ],
+          "provenance_recall": 0.9391361056409797,
+          "provenance_recall_ci": [
+            0.8662,
+            0.994
+          ],
+          "provenance_f1": 0.9368690467209098,
+          "provenance_f1_ci": [
+            0.8666,
+            0.9894
+          ],
+          "source_micro_f1": 0.98,
+          "latency_ms_p50": 57420.60445481911,
+          "latency_ms_p95": 116164.60154671222,
+          "retrieval_ms_p50": 1200.149935670197,
+          "retrieval_ms_p95": 2056.348503567278,
+          "tokens_in_mean": 4857.117647058823,
+          "tokens_out_mean": 246.90196078431373,
+          "repairs_mean": 0.6666666666666666,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid"
+          ]
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 0.7638888888888888,
+          "answer_em_ci": [
+            0.6667,
+            0.8611
+          ],
+          "answer_f1": 0.8054735171637295,
+          "answer_f1_ci": [
+            0.7094,
+            0.8857
+          ],
+          "plan_valid": 0.9305555555555556,
+          "plan_valid_ci": [
+            0.8611,
+            0.9861
+          ],
+          "source_f1": 0.9305555555555556,
+          "source_f1_ci": [
+            0.8611,
+            0.9861
+          ],
+          "provenance_precision": 0.8669293305403465,
+          "provenance_precision_ci": [
+            0.7968,
+            0.9299
+          ],
+          "provenance_recall": 0.8375595315145906,
+          "provenance_recall_ci": [
+            0.753,
+            0.9101
+          ],
+          "provenance_f1": 0.8273935883879818,
+          "provenance_f1_ci": [
+            0.7472,
+            0.8962
+          ],
+          "source_micro_f1": 0.9640287769784173,
+          "latency_ms_p50": 48278.78636447713,
+          "latency_ms_p95": 120014.70522449819,
+          "retrieval_ms_p50": 82.8769002109766,
+          "retrieval_ms_p95": 647.9616464115679,
+          "tokens_in_mean": 4100.902777777777,
+          "tokens_out_mean": 217.69444444444446,
+          "repairs_mean": 0.4166666666666667,
+          "records_transferred_mean": 11.958333333333334,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "plan_shape_invalid",
+            "query_feature_not_supported",
+            "query_value_type_invalid",
+            "relationship_not_applicable"
+          ]
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 0.8484848484848485,
+          "answer_em_ci": [
+            0.7273,
+            0.9394
+          ],
+          "answer_f1": 0.8484848484848485,
+          "answer_f1_ci": [
+            0.7273,
+            0.9394
+          ],
+          "plan_valid": 0.8484848484848485,
+          "plan_valid_ci": [
+            0.7273,
+            0.9394
+          ],
+          "latency_ms_p50": 18164.570471737534,
+          "latency_ms_p95": 48965.911148209125,
+          "retrieval_ms_p50": 8.442759048193693,
+          "retrieval_ms_p95": 85.47285562381147,
+          "tokens_in_mean": 3647.969696969697,
+          "tokens_out_mean": 88.93939393939394,
+          "repairs_mean": 0.2727272727272727,
+          "records_transferred_mean": 24.151515151515152,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 0.8495145631067961,
+          "answer_em_ci": [
+            0.801,
+            0.8981
+          ],
+          "answer_f1": 0.8873208797298748,
+          "answer_f1_ci": [
+            0.8464,
+            0.9266
+          ],
+          "plan_valid": 0.941747572815534,
+          "plan_valid_ci": [
+            0.9078,
+            0.9709
+          ],
+          "source_f1": 0.9595375722543352,
+          "source_f1_ci": [
+            0.9306,
+            0.9884
+          ],
+          "provenance_precision": 0.9239957547243208,
+          "provenance_precision_ci": [
+            0.8902,
+            0.9535
+          ],
+          "provenance_recall": 0.9092311721172857,
+          "provenance_recall_ci": [
+            0.8703,
+            0.9468
+          ],
+          "provenance_f1": 0.9051760742108591,
+          "provenance_f1_ci": [
+            0.8672,
+            0.94
+          ],
+          "source_micro_f1": 0.976470588235294,
+          "latency_ms_p50": 42101.494246860966,
+          "latency_ms_p95": 107241.34344642516,
+          "retrieval_ms_p50": 182.7292749658227,
+          "retrieval_ms_p95": 1464.8122023791075,
+          "tokens_in_mean": 3899.2961165048546,
+          "tokens_out_mean": 173.5,
+          "repairs_mean": 0.35436893203883496,
+          "records_transferred_mean": 8.048543689320388,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "plan_shape_invalid",
+            "query_feature_not_supported",
+            "query_value_type_invalid",
+            "relationship_not_applicable"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    }
+  },
+  "Ablations": {
+    "planner-full-grammar": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 0.4,
+          "answer_em_ci": [
+            0.26,
+            0.54
+          ],
+          "answer_f1": 0.6332786927199185,
+          "answer_f1_ci": [
+            0.5259,
+            0.7338
+          ],
+          "plan_valid": 0.9,
+          "plan_valid_ci": [
+            0.8,
+            0.98
+          ],
+          "source_f1": 0.9,
+          "source_f1_ci": [
+            0.8,
+            0.98
+          ],
+          "provenance_precision": 0.792,
+          "provenance_precision_ci": [
+            0.678,
+            0.888
+          ],
+          "provenance_recall": 0.6767945764896508,
+          "provenance_recall_ci": [
+            0.5702,
+            0.7858
+          ],
+          "provenance_f1": 0.6332786927199185,
+          "provenance_f1_ci": [
+            0.5259,
+            0.7338
+          ],
+          "source_micro_f1": 0.9523809523809523,
+          "latency_ms_p50": 31265.62392618507,
+          "latency_ms_p95": 166411.29782628268,
+          "retrieval_ms_p50": 295.6325989216566,
+          "retrieval_ms_p95": 2355.8742731809616,
+          "tokens_in_mean": 4616.54,
+          "tokens_out_mean": 260.22,
+          "repairs_mean": 0.44,
+          "records_transferred_mean": 10.4,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "plan_shape_invalid",
+            "query_value_type_invalid",
+            "system_error:AssertionError"
+          ]
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 0.0,
+          "answer_em_ci": [
+            0.0,
+            0.0
+          ],
+          "answer_f1": 0.0036995930447650768,
+          "answer_f1_ci": [
+            0.0,
+            0.0111
+          ],
+          "plan_valid": 0.09803921568627451,
+          "plan_valid_ci": [
+            0.0196,
+            0.1765
+          ],
+          "source_f1": 0.09803921568627451,
+          "source_f1_ci": [
+            0.0196,
+            0.1765
+          ],
+          "provenance_precision": 0.01820118967671514,
+          "provenance_precision_ci": [
+            0.0039,
+            0.0335
+          ],
+          "provenance_recall": 0.022327064724401418,
+          "provenance_recall_ci": [
+            0.002,
+            0.0473
+          ],
+          "provenance_f1": 0.016748835920443808,
+          "provenance_f1_ci": [
+            0.0027,
+            0.0341
+          ],
+          "source_micro_f1": 0.17857142857142855,
+          "latency_ms_p50": 116331.54000947252,
+          "latency_ms_p95": 435698.66873573005,
+          "retrieval_ms_p50": 1154.1733690537512,
+          "retrieval_ms_p95": 1198.2321113348007,
+          "tokens_in_mean": 9644.78431372549,
+          "tokens_out_mean": 1095.862745098039,
+          "repairs_mean": 1.7450980392156863,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "plan_shape_invalid",
+            "query_value_type_invalid",
+            "system_error:IndexError"
+          ]
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 0.013888888888888888,
+          "answer_em_ci": [
+            0.0,
+            0.0417
+          ],
+          "answer_f1": 0.028101602958030245,
+          "answer_f1_ci": [
+            0.0042,
+            0.062
+          ],
+          "plan_valid": 0.2222222222222222,
+          "plan_valid_ci": [
+            0.125,
+            0.3194
+          ],
+          "source_f1": 0.1527777777777778,
+          "source_f1_ci": [
+            0.088,
+            0.2222
+          ],
+          "provenance_precision": 0.12083713518410663,
+          "provenance_precision_ci": [
+            0.0558,
+            0.2007
+          ],
+          "provenance_recall": 0.09100212553008664,
+          "provenance_recall_ci": [
+            0.0386,
+            0.1505
+          ],
+          "provenance_f1": 0.07949353603285926,
+          "provenance_f1_ci": [
+            0.0339,
+            0.1373
+          ],
+          "source_micro_f1": 0.21118012422360247,
+          "latency_ms_p50": 90120.8122796379,
+          "latency_ms_p95": 173732.5907886958,
+          "retrieval_ms_p50": 14.692387776449323,
+          "retrieval_ms_p95": 394.2046669544652,
+          "tokens_in_mean": 9006.25,
+          "tokens_out_mean": 554.5833333333334,
+          "repairs_mean": 1.6944444444444444,
+          "records_transferred_mean": 1.4027777777777777,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "plan_shape_invalid",
+            "query_value_type_invalid",
+            "system_error:IndexError"
+          ]
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 0.7878787878787878,
+          "answer_em_ci": [
+            0.6364,
+            0.9091
+          ],
+          "answer_f1": 0.7878787878787878,
+          "answer_f1_ci": [
+            0.6364,
+            0.9091
+          ],
+          "plan_valid": 0.7878787878787878,
+          "plan_valid_ci": [
+            0.6364,
+            0.9091
+          ],
+          "latency_ms_p50": 9437.07290571183,
+          "latency_ms_p95": 33051.388477440916,
+          "retrieval_ms_p50": 6.807045079767704,
+          "retrieval_ms_p95": 10.439853370189663,
+          "tokens_in_mean": 3420.212121212121,
+          "tokens_out_mean": 80.66666666666667,
+          "repairs_mean": 0.09090909090909091,
+          "records_transferred_mean": 17.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 0.22815533980582525,
+          "answer_em_ci": [
+            0.1748,
+            0.2864
+          ],
+          "answer_f1": 0.29065985094299573,
+          "answer_f1_ci": [
+            0.2352,
+            0.3503
+          ],
+          "plan_valid": 0.44660194174757284,
+          "plan_valid_ci": [
+            0.3738,
+            0.5146
+          ],
+          "source_f1": 0.35260115606936415,
+          "source_f1_ci": [
+            0.2813,
+            0.42
+          ],
+          "provenance_precision": 0.284558002351261,
+          "provenance_precision_ci": [
+            0.2183,
+            0.3504
+          ],
+          "provenance_recall": 0.24006105296874714,
+          "provenance_recall_ci": [
+            0.1868,
+            0.2948
+          ],
+          "provenance_f1": 0.22105005700754007,
+          "provenance_f1_ci": [
+            0.1688,
+            0.2754
+          ],
+          "source_micro_f1": 0.478134110787172,
+          "latency_ms_p50": 78099.03802210465,
+          "latency_ms_p95": 186627.06987936975,
+          "retrieval_ms_p50": 21.39045065268874,
+          "retrieval_ms_p95": 1688.5816781781527,
+          "tokens_in_mean": 7204.019417475728,
+          "tokens_out_mean": 541.2233009708738,
+          "repairs_mean": 1.145631067961165,
+          "records_transferred_mean": 5.737864077669903,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "plan_shape_invalid",
+            "query_value_type_invalid",
+            "system_error:AssertionError",
+            "system_error:IndexError"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    },
+    "planner-full-norepair": {
+      "classes": {
+        "single": {
+          "questions": 50,
+          "answer_em": 0.98,
+          "answer_em_ci": [
+            0.94,
+            1.0
+          ],
+          "answer_f1": 0.996,
+          "answer_f1_ci": [
+            0.988,
+            1.0
+          ],
+          "plan_valid": 1.0,
+          "plan_valid_ci": [
+            1.0,
+            1.0
+          ],
+          "source_f1": 1.0,
+          "source_f1_ci": [
+            1.0,
+            1.0
+          ],
+          "provenance_precision": 0.996,
+          "provenance_precision_ci": [
+            0.988,
+            1.0
+          ],
+          "provenance_recall": 0.996,
+          "provenance_recall_ci": [
+            0.988,
+            1.0
+          ],
+          "provenance_f1": 0.996,
+          "provenance_f1_ci": [
+            0.988,
+            1.0
+          ],
+          "source_micro_f1": 1.0,
+          "latency_ms_p50": 30351.889514597133,
+          "latency_ms_p95": 44847.1974181477,
+          "retrieval_ms_p50": 249.43071394227445,
+          "retrieval_ms_p95": 1855.7073169853531,
+          "tokens_in_mean": 3109.78,
+          "tokens_out_mean": 89.0,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": []
+        },
+        "independent": {
+          "questions": 51,
+          "answer_em": 0.3137254901960784,
+          "answer_em_ci": [
+            0.1961,
+            0.4314
+          ],
+          "answer_f1": 0.3279201251052568,
+          "answer_f1_ci": [
+            0.1961,
+            0.451
+          ],
+          "plan_valid": 0.3333333333333333,
+          "plan_valid_ci": [
+            0.1961,
+            0.451
+          ],
+          "source_f1": 0.3333333333333333,
+          "source_f1_ci": [
+            0.1961,
+            0.451
+          ],
+          "provenance_precision": 0.32433521353746975,
+          "provenance_precision_ci": [
+            0.1961,
+            0.451
+          ],
+          "provenance_recall": 0.3333333333333333,
+          "provenance_recall_ci": [
+            0.1961,
+            0.451
+          ],
+          "provenance_f1": 0.3274945533769063,
+          "provenance_f1_ci": [
+            0.1961,
+            0.451
+          ],
+          "source_micro_f1": 0.5,
+          "latency_ms_p50": 25484.545215032995,
+          "latency_ms_p95": 46374.31068322621,
+          "retrieval_ms_p50": 1133.9836390689015,
+          "retrieval_ms_p95": 1432.6004706323142,
+          "tokens_in_mean": 3120.3137254901962,
+          "tokens_out_mean": 158.4313725490196,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 0.0,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "query_feature_not_supported",
+            "relationship_not_applicable"
+          ]
+        },
+        "dependent": {
+          "questions": 72,
+          "answer_em": 0.75,
+          "answer_em_ci": [
+            0.6389,
+            0.8472
+          ],
+          "answer_f1": 0.7848022602088679,
+          "answer_f1_ci": [
+            0.6797,
+            0.882
+          ],
+          "plan_valid": 0.8055555555555556,
+          "plan_valid_ci": [
+            0.7083,
+            0.9028
+          ],
+          "source_f1": 0.7962962962962963,
+          "source_f1_ci": [
+            0.6991,
+            0.8889
+          ],
+          "provenance_precision": 0.7630653553571461,
+          "provenance_precision_ci": [
+            0.6667,
+            0.8539
+          ],
+          "provenance_recall": 0.7905955619916916,
+          "provenance_recall_ci": [
+            0.6921,
+            0.8881
+          ],
+          "provenance_f1": 0.7683121486112839,
+          "provenance_f1_ci": [
+            0.6679,
+            0.8637
+          ],
+          "source_micro_f1": 0.8837209302325582,
+          "latency_ms_p50": 21278.34636461921,
+          "latency_ms_p95": 34564.19203788974,
+          "retrieval_ms_p50": 82.85562111996114,
+          "retrieval_ms_p95": 618.9751414814964,
+          "tokens_in_mean": 3119.8333333333335,
+          "tokens_out_mean": 141.65277777777777,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 10.972222222222221,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "output_invalid",
+            "query_feature_not_supported",
+            "query_value_type_invalid",
+            "relationship_not_applicable"
+          ]
+        },
+        "stress": {
+          "questions": 33,
+          "answer_em": 0.9393939393939394,
+          "answer_em_ci": [
+            0.8485,
+            1.0
+          ],
+          "answer_f1": 0.9393939393939394,
+          "answer_f1_ci": [
+            0.8485,
+            1.0
+          ],
+          "plan_valid": 0.9393939393939394,
+          "plan_valid_ci": [
+            0.8485,
+            1.0
+          ],
+          "latency_ms_p50": 9257.200956810266,
+          "latency_ms_p95": 18514.945319667455,
+          "retrieval_ms_p50": 10.017814114689827,
+          "retrieval_ms_p95": 10.644987085834146,
+          "tokens_in_mean": 3105.060606060606,
+          "tokens_out_mean": 53.333333333333336,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 13.484848484848484,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "field_not_found",
+            "relationship_not_applicable"
+          ]
+        },
+        "all": {
+          "questions": 206,
+          "answer_em": 0.7281553398058253,
+          "answer_em_ci": [
+            0.6602,
+            0.7864
+          ],
+          "answer_f1": 0.74771693745343,
+          "answer_f1_ci": [
+            0.6846,
+            0.8035
+          ],
+          "plan_valid": 0.7572815533980582,
+          "plan_valid_ci": [
+            0.6942,
+            0.8107
+          ],
+          "source_f1": 0.7186897880539499,
+          "source_f1_ci": [
+            0.6513,
+            0.7823
+          ],
+          "provenance_precision": 0.7010508755845404,
+          "provenance_precision_ci": [
+            0.6333,
+            0.7619
+          ],
+          "provenance_recall": 0.7151611587479872,
+          "provenance_recall_ci": [
+            0.646,
+            0.7738
+          ],
+          "provenance_f1": 0.7041658781632062,
+          "provenance_f1_ci": [
+            0.6368,
+            0.7634
+          ],
+          "source_micro_f1": 0.8602620087336245,
+          "latency_ms_p50": 21584.53721506521,
+          "latency_ms_p95": 41117.51033610199,
+          "retrieval_ms_p50": 114.12795027717948,
+          "retrieval_ms_p95": 1331.197823444381,
+          "tokens_in_mean": 3115.145631067961,
+          "tokens_out_mean": 118.87864077669903,
+          "repairs_mean": 0.0,
+          "records_transferred_mean": 5.995145631067961,
+          "native_queries_mean": 0.0,
+          "native_errors_mean": 0.0,
+          "tool_calls_mean": 0.0,
+          "errors": [
+            "field_not_found",
+            "output_invalid",
+            "query_feature_not_supported",
+            "query_value_type_invalid",
+            "relationship_not_applicable"
+          ]
+        }
+      },
+      "questions": 206,
+      "predicted": 206
+    }
+  }
+}

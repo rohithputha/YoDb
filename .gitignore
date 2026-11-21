@@ -8,6 +8,6 @@ dist/
 .wheels/
 benchmark/runs/
 benchmark/questions.jsonl
-benchmark/results/
+benchmark/results/runs/
 .env
 .run_all/

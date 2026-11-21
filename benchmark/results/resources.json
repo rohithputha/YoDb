@@ -1,0 +1,62 @@
+{
+  "gold-dag": {
+    "wall_seconds": 152.9,
+    "status": 0,
+    "peak_host_rss_mb": 328.9,
+    "gpu_peak_mb": null
+  },
+  "gold-sequential": {
+    "wall_seconds": 122.8,
+    "status": 0,
+    "peak_host_rss_mb": 329.4,
+    "gpu_peak_mb": null
+  },
+  "planner-full": {
+    "wall_seconds": 1.5,
+    "status": 0,
+    "peak_host_rss_mb": 292.8,
+    "gpu_peak_mb": null
+  },
+  "tool-agent": {
+    "wall_seconds": 3092.3,
+    "status": 0,
+    "peak_host_rss_mb": 621.8,
+    "gpu_peak_mb": null
+  },
+  "router": {
+    "wall_seconds": 436.4,
+    "status": 0,
+    "peak_host_rss_mb": 621.8,
+    "gpu_peak_mb": null
+  },
+  "gold": {
+    "wall_seconds": 84.1,
+    "status": 0,
+    "peak_host_rss_mb": 621.8,
+    "gpu_peak_mb": null
+  },
+  "planner-descriptions": {
+    "wall_seconds": 252.3,
+    "status": 0,
+    "peak_host_rss_mb": 599.0,
+    "gpu_peak_mb": null
+  },
+  "planner-retrieved": {
+    "wall_seconds": 336.4,
+    "status": 0,
+    "peak_host_rss_mb": 599.0,
+    "gpu_peak_mb": null
+  },
+  "planner-full-grammar": {
+    "wall_seconds": 1040.7,
+    "status": 0,
+    "peak_host_rss_mb": 315.2,
+    "gpu_peak_mb": null
+  },
+  "planner-full-norepair": {
+    "wall_seconds": 166.4,
+    "status": 0,
+    "peak_host_rss_mb": 481.1,
+    "gpu_peak_mb": null
+  }
+}
