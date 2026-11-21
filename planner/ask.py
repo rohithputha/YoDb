@@ -40,6 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rows", type=int, default=5, help="rows of each step to print")
     parser.add_argument("--embedding-model", default="BAAI/bge-small-en-v1.5")
     parser.add_argument("--show-prompt", action="store_true", help="print the schema text the model sees")
+    parser.add_argument("--no-answer", action="store_true", help="stop after the rows; do not ask the model to write the answer in English")
+    parser.add_argument("--answer-rows", type=int, default=40, help="rows of the final step the model sees when it writes the answer")
     args = parser.parse_args(argv)
 
     import yodb
@@ -127,7 +129,35 @@ def main(argv: list[str] | None = None) -> int:
         print("evidence (record ids the answer rests on): " + ", ".join(f"{dataset}: {len(ids)}" for dataset, ids in evidence.items()))
         print(f"source kinds used: {', '.join(kinds_of(db, plan))}")
         print(f"end to end: {(time.perf_counter() - started) * 1000:.0f} ms; model tokens: {sum(a['tokens_in'] for a in outcome['attempts'])} in, {sum(a['tokens_out'] for a in outcome['attempts'])} out")
+
+        if not args.no_answer:
+            section("6. the answer in English (the model, given only the rows the typed layer returned)")
+            generation = generator.generate(answer_messages(args.question, plan, final, answer_field, len(answers), evidence, args.answer_rows))
+            print(generation.text.strip())
+            print(f"\n({generation.tokens_in} tokens in, {generation.tokens_out} out, {generation.latency_ms:.0f} ms)")
     return 0
+
+
+ANSWER_PROMPT = """\
+You answer a user's question from rows a typed query layer retrieved for it. Use only these rows: do not add facts,
+and say so when the rows do not settle the question. Write a short, direct answer in plain English: name the items
+(business or user names, review excerpts) rather than listing ids, and give the count when there are many. Put the
+record id of each item you name in parentheses after it, since the user may look it up. Mention the ordering the
+rows came in when it matters (most useful first, highest rated first, ...).
+"""
+
+
+def answer_messages(question: str, plan, rows, answer_field: str, distinct: int, evidence, limit: int) -> list[dict[str, str]]:
+    shown = [{k: (v[:240] + "..." if isinstance(v, str) and len(v) > 240 else v) for k, v in row.items()} for row in rows[:limit]]
+    context = (
+        f"Question: {question}\n\n"
+        f"The plan that ran (typed queries over the stores):\n{json.dumps(plan, ensure_ascii=False)}\n\n"
+        f"Answer field: {answer_field}; {distinct} distinct answer ids over {len(rows)} rows"
+        + (f" (the first {limit} rows are shown)" if len(rows) > limit else "") + ".\n"
+        f"Evidence records by dataset: {', '.join(f'{d}: {len(i)}' for d, i in evidence.items())}\n\n"
+        "Rows:\n" + "\n".join(json.dumps(r, ensure_ascii=False, default=str) for r in shown)
+    )
+    return [{"role": "system", "content": ANSWER_PROMPT}, {"role": "user", "content": context}]
 
 
 def _plan_only(planner, question: str) -> dict:
