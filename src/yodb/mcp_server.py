@@ -73,13 +73,30 @@ which joined rows can match, before matching: it cannot find rows that have no m
 "optional": true with no step "where" and keep the rows whose "<as>.id" is null.
 Only a relationship with "traversable": true can be used.
 
-Not available: aggregation (count, sum, group by), distinct, more than one traverse step, a next page
-(there are no cursors), and comparing two fields with each other@NO_SEMANTIC@. To count, fetch the rows and count them.
+Not available: more than one traverse step, a next page (there are no cursors), and comparing two fields
+with each other@NO_SEMANTIC@.
 A query that would read more than @SOURCE_ROWS@ rows from one source, or join more than @JOINED_ROWS@, is refused
 with query_row_limit_exceeded or query_coordinator_limit_exceeded, whatever page.first is: add a filter
 on a field with few matching rows (an eq or in, or a range). contains and starts_with are applied after
 the rows are read, and can keep other filters from narrowing the read: when a query is refused, call
 explain and check which filters appear under "filters_applied_by_the_source"."""
+
+AGGREGATE_LANGUAGE = """To count, sum or group instead of listing rows, ask for aggregates. The answer is groups, not records: there is no "id",
+and each row holds the group_by fields and the aggregates' aliases.
+  {"from": {"dataset": "order"},
+   "where": <condition>,                                         optional; applied before grouping
+   "group_by": ["status"],                                       optional; without it the whole dataset is one group, and one row is returned even when nothing matches
+   "aggregate": [{"fn": "count", "as": "orders"},                count of rows
+                 {"fn": "sum", "field": "amount", "as": "total"}],
+   "order_by": [{"field": "total", "direction": "desc"}],        may name only group_by fields and aliases; ties break by the group_by fields
+   "page": {"first": 10}}                                        applies to groups
+"fn" is count (a "field" is optional: with it, rows where the field is null are not counted), count_distinct, sum, avg
+(numeric fields only), min or max (numbers, text and timestamps). Nulls are skipped by every aggregate except count
+without a field; sum, avg, min and max of nothing are null. avg is a float. An alias is its own name: not a field of the
+dataset and not used twice. group_by alone returns the distinct combinations of its fields. "select" cannot be combined
+with them. Aggregates work on one dataset whose fields all live in one source: they cannot be combined with traverse, a
+semantic or similarity condition, or fields of different sources. A query that YoDb must aggregate itself (a contains or
+starts_with filter, a timestamp key) reads at most @SOURCE_ROWS@ rows from the source, like any other."""
 
 RULES_LANGUAGE = """  {"rule": "paying"}              a named rule of the dataset: the filter its business definition stands for"""
 
@@ -123,6 +140,7 @@ def query_language(limits: Mapping[str, int], *, semantic: bool = False, rules: 
     ):
         guide = guide.replace(mark, f"{limits[key]:,}")
     guide += RULES_NOTE if rules else ""
+    guide += "\n\n" + AGGREGATE_LANGUAGE.replace("@SOURCE_ROWS@", f"{limits['maximum_rows_per_source']:,}")
     unavailable = []
     if not semantic:
         unavailable.append("semantic conditions (none is configured on this server)")

@@ -11,7 +11,9 @@ from dataclasses import dataclass
 
 from ..catalog import LogicalType, SourceKind
 from ..errors import ErrorCode, ErrorDetail, QueryError
+from ..planning import AggregateMeasure, RemoteScan
 from ..query.models import (
+    AggregateFunction,
     BoundAllExpression,
     BoundAnyExpression,
     BoundFilterExpression,
@@ -214,3 +216,77 @@ def quote_identifier(identifier: str) -> str:
 
 def fail(code: ErrorCode, message: str, location: str | None = None) -> None:
     raise QueryError(ErrorDetail(code=code, message=message, retryable=False, location=location))
+
+
+@dataclass(frozen=True)
+class AggregateStatement:
+    """A compiled ``GROUP BY`` read: its text, bound values, and each output column with the logical type of its values."""
+
+    sql: str
+    parameters: tuple[object, ...]
+    columns: tuple[tuple[str, LogicalType], ...]
+
+
+def compile_aggregate_scan(scan: RemoteScan, dialect: SqlDialect) -> AggregateStatement:
+    """``SELECT keys, COUNT(*) ... FROM t WHERE ... GROUP BY keys ORDER BY ... LIMIT n`` for a scan the planner gave an aggregate.
+
+    The projection of such a scan only names the source's fields (so the filter can find its columns); the
+    selected columns are the group keys and the aggregates.  Text keys and extremes are compared in byte order
+    exactly as the coordinator compares them, whatever collation the column declares.
+    """
+
+    spec = scan.aggregate
+    assert spec is not None
+    context = CompileContext(query=None, fields_by_name={f.field.name: f for f in scan.projection}, dialect=dialect)
+    parameters: list[object] = []
+    keys = [order_column(key, dialect) for key in spec.group_by]
+    selected = [f"{expression} AS {quote_identifier(key.field.name)}" for expression, key in zip(keys, spec.group_by)]
+    selected += [f"{_measure_sql(measure, dialect)} AS {quote_identifier(measure.alias)}" for measure in spec.measures]
+    where = compile_expression(scan.pushed_filter, context, parameters)
+    statements = [f"SELECT {', '.join(selected)}", f"FROM {resource_name(scan.source.resource)}"]
+    if where is not None:
+        statements.append(f"WHERE {where}")
+    if keys:
+        statements.append(f"GROUP BY {', '.join(keys)}")
+    if scan.order_by:
+        by_key = {key.field.name: key for key in spec.group_by}
+        terms = []
+        for term in scan.order_by:
+            key = by_key.get(term.field.name)
+            if key is not None:
+                terms.append(order_term(key, term.direction.value, dialect))
+            else:
+                direction = term.direction.value.upper()
+                null_order = (" NULLS LAST" if direction == "ASC" else " NULLS FIRST") if dialect.explicit_null_order else ""
+                terms.append(f"{quote_identifier(term.field.name)} {direction}{null_order}")
+        statements.append("ORDER BY " + ", ".join(terms))
+    limit = scan.limit if scan.limit is not None else (scan.maximum_rows + 1 if scan.maximum_rows is not None else None)
+    if limit is not None:
+        parameters.append(limit)
+        statements.append(f"LIMIT {dialect.placeholder}")
+    check_variable_limit(parameters, dialect)
+    columns = tuple((key.field.name, key.field.spec.type) for key in spec.group_by) + tuple(
+        (measure.alias, measure.result_type) for measure in spec.measures
+    )
+    return AggregateStatement(sql="\n".join(statements), parameters=tuple(parameters), columns=columns)
+
+
+def _measure_sql(measure: AggregateMeasure, dialect: SqlDialect) -> str:
+    function = measure.function
+    field = measure.field
+    if field is None:
+        return "COUNT(*)"                       # validation lets only COUNT omit its field
+    plain, ordered = column_name(field), order_column(field, dialect)
+    if function is AggregateFunction.COUNT:
+        return f"COUNT({plain})"
+    if function is AggregateFunction.COUNT_DISTINCT:
+        return f"COUNT(DISTINCT {ordered})"
+    if function is AggregateFunction.SUM:
+        return f"SUM({plain})"
+    if function is AggregateFunction.AVG:
+        return f"AVG({plain})"
+    if function is AggregateFunction.MIN:
+        return f"MIN({ordered})"
+    if function is AggregateFunction.MAX:
+        return f"MAX({ordered})"
+    raise AssertionError(f"Unknown aggregate function: {function!r}")

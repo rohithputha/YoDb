@@ -86,11 +86,19 @@ _SPECS: tuple[OperatorSpec, ...] = (
         ("driver_left", "driver_right"), requires=(_K.SCAN,),
     ),
     OperatorSpec(
-        _K.AGGREGATE, _C.RELATIONAL, _S.PLANNED, "Aggregate",
-        "COUNT, SUM, AVG, MIN, MAX over rows; a source may compute them or YoDb may.",
+        _K.AGGREGATE, _C.RELATIONAL, _S.IMPLEMENTED, "Aggregate",
+        "COUNT, COUNT DISTINCT, SUM, AVG, MIN, MAX over rows; a source may compute them or YoDb may.",
+        ("push_to_source", "run_in_yodb"), requires=(_K.SCAN,),
     ),
-    OperatorSpec(_K.GROUP_BY, _C.RELATIONAL, _S.PLANNED, "Group by", "Partition rows and aggregate each group.", requires=(_K.AGGREGATE,)),
-    OperatorSpec(_K.DISTINCT, _C.RELATIONAL, _S.PLANNED, "Distinct", "Remove duplicate rows."),
+    OperatorSpec(
+        _K.GROUP_BY, _C.RELATIONAL, _S.IMPLEMENTED, "Group by", "Partition rows and aggregate each group.",
+        ("push_to_source", "run_in_yodb"), requires=(_K.AGGREGATE,),
+    ),
+    OperatorSpec(
+        _K.DISTINCT, _C.RELATIONAL, _S.IMPLEMENTED, "Distinct",
+        "Remove duplicate rows: the distinct combinations of the 'group_by' fields.",
+        ("push_to_source", "run_in_yodb"), requires=(_K.GROUP_BY,),
+    ),
     OperatorSpec(_K.UNION, _C.RELATIONAL, _S.PLANNED, "Union", "Combine the rows of several queries (and intersect / except)."),
     OperatorSpec(
         _K.KEY_LOOKUP, _C.SUPPORT, _S.IMPLEMENTED, "Key lookup",

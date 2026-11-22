@@ -55,8 +55,11 @@ The sections below give the detail.
 - **Similarity search** (see [Similarity search](/query/similarity-search)): one per query,
   `top` at most 1,000, not with a semantic condition, not under `any`/`not`, not in a traverse
   step, refused rather than approximated when a condition cannot be applied before ranking.
-- **Not implemented:** `aggregate`, `group_by`, `distinct`, `union`, nested results,
-  and more than one `traverse` step.
+- **Aggregates** (`aggregate`, `group_by`, and `group_by` alone as distinct): one dataset,
+  every field in its identity source, not with `traverse` or a semantic or similarity
+  condition, at most 20 aggregates and 8 group keys. When YoDb has to group the rows
+  itself, the source's row guard (10,000 rows by default) applies to the rows it reads.
+- **Not implemented:** `union`, nested results, and more than one `traverse` step.
 - **One row per ID per source.** A source must have at most one row for a
   logical ID. The catalog validator rejects identities that are not backed by a
   primary or unique key.

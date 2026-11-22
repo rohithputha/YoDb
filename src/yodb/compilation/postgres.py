@@ -14,6 +14,7 @@ from .sql import (
     CompileContext,
     SqlDialect,
     column_name as _column,
+    compile_aggregate_scan,
     compile_expression,
     effective_limit,
     fail as _fail,
@@ -67,6 +68,11 @@ class PostgresQueryCompiler:
                 ErrorCode.QUERY_SOURCE_SHAPE_UNSUPPORTED,
                 "The PostgreSQL compiler currently accepts single-source queries only.",
             )
+        if query.query.aggregation is not None:
+            _fail(
+                ErrorCode.QUERY_COMPILATION_UNSUPPORTED,
+                "An aggregate query is compiled from the planner's scan, not from the resolved query.",
+            )
         source = query.identity_source
         if source.source_kind is not SourceKind.POSTGRES:
             _fail(
@@ -119,6 +125,8 @@ class PostgresQueryCompiler:
                 ErrorCode.QUERY_COMPILATION_UNSUPPORTED,
                 "The PostgreSQL compiler requires a PostgreSQL remote scan.",
             )
+        if scan.aggregate is not None:
+            return self._compile_aggregate(scan)
         fields_by_name = {field.field.name: field for field in scan.projection}
         if scan.source.logical_id.field.name not in fields_by_name:
             _fail(
@@ -198,6 +206,20 @@ class PostgresQueryCompiler:
                 for field in scan.projection
             )
             + ((CompiledOutputColumn(sql_alias=DISTANCE_COLUMN, logical_field=DISTANCE_COLUMN),) if with_distance else ()),
+        )
+
+    def _compile_aggregate(self, scan: RemoteScan) -> CompiledPostgresQuery:
+        """A ``GROUP BY`` read; its rows are groups, so unlike a record scan it carries no logical ID."""
+
+        statement = compile_aggregate_scan(scan, POSTGRES_DIALECT)
+        return CompiledPostgresQuery(
+            source_name=scan.source.source_name,
+            connection_ref=scan.source.connection_ref,
+            sql=statement.sql,
+            parameters=statement.parameters,
+            output_columns=tuple(
+                CompiledOutputColumn(sql_alias=name, logical_field=name, logical_type=kind) for name, kind in statement.columns
+            ),
         )
 
     def compile_edges(self, scan: GraphEdgeScan) -> CompiledPostgresQuery:

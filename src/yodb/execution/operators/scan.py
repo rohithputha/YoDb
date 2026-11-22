@@ -19,7 +19,7 @@ def execute(ctx: ExecutionContext, node: RemoteScan, run: Run) -> tuple[LogicalR
             f"Source '{node.source.source_name}' exceeded the V0.1 record-assembly guard of {node.maximum_rows} rows.",
             source_name=node.source.source_name,
         )
-    if run.trace is not None and node.limit is None and node.vector_search is None and node.key_filter is None:
+    if run.trace is not None and node.limit is None and node.vector_search is None and node.key_filter is None and node.aggregate is None:
         # A complete, unrestricted result: exactly what the planner wants to learn from.
         run.trace.scan_actuals.append(ScanActual(node, len(rows)))
     return rows

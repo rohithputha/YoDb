@@ -9,6 +9,7 @@ from ...operators import OperatorKind
 from ...query.models import BoundAllExpression, BoundFilterExpression
 from ...query.resolution import QuerySourceShape, ResolvedField, SingleSourceQueryBinding, SourceResolvedQuery
 from ..contracts import (
+    AggregateSpec,
     PlanProperties,
     RemoteScan,
     ResultCompleteness,
@@ -29,6 +30,8 @@ class ScanPlan:
     fully_pushed: bool
     # A single source enforced the exact order and page (so no coordinator sort is needed).
     page_pushed: bool
+    # The source computes the aggregate itself: its scan returns the groups.
+    aggregate_pushed: bool = False
 
 
 class ScanOperator:
@@ -39,7 +42,9 @@ class ScanOperator:
     def __init__(self, services: PlanningServices) -> None:
         self._services = services
 
-    def plan(self, resolved: SourceResolvedQuery, *, allow_complete: bool = True) -> ScanPlan:
+    def plan(
+        self, resolved: SourceResolvedQuery, *, allow_complete: bool = True, aggregate: AggregateSpec | None = None
+    ) -> ScanPlan:
         """Build one read per source.
 
         A filter is fully pushed when the single source accepted the whole
@@ -50,6 +55,12 @@ class ScanOperator:
         """
 
         services = self._services
+        if aggregate is not None:
+            pushed = self._plan_aggregate_scan(resolved, aggregate)
+            if pushed is not None:
+                return pushed
+            # The source cannot compute it exactly: read the rows it can filter (guarded) and let YoDb aggregate them.
+            allow_complete = False
         source_filters = source_local_filters(resolved)
         complete = resolved.shape is QuerySourceShape.SINGLE_SOURCE and allow_complete
         total_conjuncts = top_level_conjuncts(resolved.query.where)
@@ -114,6 +125,51 @@ class ScanOperator:
             every_source_accepted if complete else every_source_accepted and pushed_conjuncts == len(total_conjuncts)
         )
         return ScanPlan(tuple(scans), fully_pushed, page_pushed)
+
+
+    def _plan_aggregate_scan(self, resolved: SourceResolvedQuery, aggregate: AggregateSpec) -> ScanPlan | None:
+        """Ask the one source to group and aggregate; None when it cannot do so exactly."""
+
+        services = self._services
+        source = resolved.identity_source
+        # Names the source's fields (the group keys, the aggregated fields and the filter's); the statement's
+        # columns come from the aggregate, not from this list.
+        projection = source_projection(source)
+        requested = SourceOperationRequest(
+            projection=projection,
+            filter=resolved.query.where,
+            order_by=resolved.query.order_by,
+            limit=effective_limit(resolved.query),
+            complete_result=True,
+            aggregate=aggregate,
+        )
+        decision = services.adapters.adapter_for(source.source_kind).plan_remote_scan(source, requested)
+        if not decision.accepted_aggregate or decision.accepted_filter is not requested.filter:
+            return None
+        page_pushed = decision.accepted_order == requested.order_by and decision.accepted_limit == requested.limit
+        caps = services.capabilities(source.source_kind)
+        scan = RemoteScan(
+            source=source,
+            projection=projection,
+            pushed_filter=decision.accepted_filter,
+            order_by=decision.accepted_order,
+            limit=decision.accepted_limit,
+            maximum_rows=services.row_cap(source.source_kind) if decision.accepted_limit is None else None,
+            key_lookup_limit=None if caps.key_lookup is None else caps.key_lookup.maximum_keys,
+            aggregate=aggregate,
+            properties=PlanProperties(
+                output_fields=aggregate.group_by,
+                logical_id=None,
+                ids_are_unique=False,
+                ordering=decision.accepted_order if decision.accepted_order else None,
+                location=remote_location(source.source_name),
+                completeness=ResultCompleteness.EXACT,
+                result_shape=ResultShape.AGGREGATES,
+                catalog_fingerprint=resolved.query.catalog_fingerprint,
+                names=aggregate.output_names,
+            ),
+        )
+        return ScanPlan((scan,), fully_pushed=True, page_pushed=page_pushed, aggregate_pushed=True)
 
 
 def source_projection(source: SingleSourceQueryBinding) -> tuple[ResolvedField, ...]:

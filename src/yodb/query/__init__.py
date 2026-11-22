@@ -1,8 +1,12 @@
 """Backend-neutral submitted-query parsing and active-catalog binding."""
 
 from .models import (
+    AggregateFunction,
+    AggregateTerm,
     AllExpression,
     AnyExpression,
+    BoundAggregateTerm,
+    BoundAggregation,
     BoundAllExpression,
     BoundAnyExpression,
     BoundDataset,
@@ -42,6 +46,10 @@ from .similar import BoundSimilarPredicate, SimilarPredicate, similar_predicates
 from .validation import QueryValidationPolicy, bind_query, validate_query
 
 __all__ = [
+    "AggregateFunction",
+    "AggregateTerm",
+    "BoundAggregateTerm",
+    "BoundAggregation",
     "BoundExtensionTerm",
     "DEFAULT_TERMS",
     "ExtensionTerm",

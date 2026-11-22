@@ -17,7 +17,7 @@ from enum import Enum
 
 from ..catalog import LogicalType, SourceKind, VectorMetric
 from ..operators import OPERATORS, OperatorKind
-from ..query.models import ComparisonOperator
+from ..query.models import AggregateFunction, ComparisonOperator
 
 
 class BooleanOperator(str, Enum):
@@ -91,6 +91,24 @@ class GraphCapability:
 
 
 @dataclass(frozen=True)
+class AggregateCapability:
+    """The source can group rows and compute aggregates exactly as YoDb does.
+
+    ``group_types``: the field types it can group by (equal values must land in one group, as YoDb's
+    comparison says).  ``measure_types``: the types ``min``/``max``/``count_distinct`` (and ``sum``/``avg``, for
+    the numeric ones) may take.  Anything outside these runs in YoDb over the rows it reads.
+    """
+
+    functions: frozenset[AggregateFunction]
+    group_types: frozenset[LogicalType]
+    measure_types: frozenset[LogicalType]
+
+    def __post_init__(self) -> None:
+        if not self.functions:
+            raise ValueError("an aggregate capability needs at least one function")
+
+
+@dataclass(frozen=True)
 class SourceCapabilities:
     source_kind: SourceKind
     # Filtering the source can enforce exactly.
@@ -107,6 +125,7 @@ class SourceCapabilities:
     key_lookup: KeyLookupCapability | None = None
     vector_search: VectorSearchCapability | None = None
     graph: GraphCapability | None = None
+    aggregate: AggregateCapability | None = None
 
     def __post_init__(self) -> None:
         if self.maximum_rows is not None and self.maximum_rows < 1:
@@ -216,6 +235,29 @@ def _limit_view(caps: SourceCapabilities) -> OperatorSupport:
     if caps.supports_limit:
         return _source(OperatorKind.LIMIT, ("push_to_source", "run_in_yodb"), "with the order that defines it")
     return _coordinator(OperatorKind.LIMIT, ("run_in_yodb",), "the source cannot limit")
+
+
+def _aggregate_support(kind: OperatorKind, noun: str, caps: SourceCapabilities) -> OperatorSupport:
+    a = caps.aggregate
+    if a is None:
+        return _coordinator(kind, ("run_in_yodb",), f"the source declares no aggregates: YoDb {noun} the rows it reads")
+    detail = f"functions: {_names(a.functions)}; group by types: {_names(a.group_types)}"
+    return _source(kind, ("push_to_source", "run_in_yodb"), detail)
+
+
+@support_view(OperatorKind.AGGREGATE)
+def _aggregate_view(caps: SourceCapabilities) -> OperatorSupport:
+    return _aggregate_support(OperatorKind.AGGREGATE, "aggregates", caps)
+
+
+@support_view(OperatorKind.GROUP_BY)
+def _group_by_view(caps: SourceCapabilities) -> OperatorSupport:
+    return _aggregate_support(OperatorKind.GROUP_BY, "groups", caps)
+
+
+@support_view(OperatorKind.DISTINCT)
+def _distinct_view(caps: SourceCapabilities) -> OperatorSupport:
+    return _aggregate_support(OperatorKind.DISTINCT, "deduplicates", caps)
 
 
 @support_view(OperatorKind.KEY_LOOKUP)

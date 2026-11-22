@@ -36,6 +36,8 @@ class ErrorCode(str, Enum):
     QUERY_OPERATOR_NOT_SUPPORTED = "query_operator_not_supported"
     QUERY_EXPRESSION_INVALID = "query_expression_invalid"
     QUERY_LIMIT_INVALID = "query_limit_invalid"
+    QUERY_AGGREGATE_INVALID = "query_aggregate_invalid"
+    QUERY_AGGREGATE_UNSUPPORTED = "query_aggregate_unsupported"
     QUERY_CATALOG_MISMATCH = "query_catalog_mismatch"
     SOURCE_BINDING_UNAVAILABLE = "source_binding_unavailable"
     SOURCE_LOGICAL_ID_UNAVAILABLE = "source_logical_id_unavailable"

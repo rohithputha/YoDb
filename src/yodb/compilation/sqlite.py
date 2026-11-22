@@ -19,6 +19,7 @@ from .sql import (
     SqlDialect,
     check_variable_limit,
     column_name,
+    compile_aggregate_scan,
     compile_expression,
     effective_limit,
     fail,
@@ -62,6 +63,11 @@ class SqliteQueryCompiler:
         if source.source_kind is not SourceKind.SQLITE:
             fail(ErrorCode.QUERY_COMPILATION_UNSUPPORTED, "The SQLite compiler requires a SQLite source binding.")
 
+        if query.query.aggregation is not None:
+            fail(
+                ErrorCode.QUERY_COMPILATION_UNSUPPORTED,
+                "An aggregate query is compiled from the planner's scan, not from the resolved query.",
+            )
         context = CompileContext(query=query, fields_by_name=field_map(query), dialect=SQLITE_DIALECT)
         selected = tuple(require_resolved_field(context, field.name, "select") for field in query.query.select)
         parameters: list[object] = []
@@ -91,6 +97,18 @@ class SqliteQueryCompiler:
             fail(ErrorCode.QUERY_COMPILATION_UNSUPPORTED, "The SQLite compiler requires a SQLite remote scan.")
         if scan.vector_search is not None:
             fail(ErrorCode.QUERY_COMPILATION_UNSUPPORTED, "SQLite has no vector search.")
+        if scan.aggregate is not None:
+            statement = compile_aggregate_scan(scan, SQLITE_DIALECT)
+            return CompiledSqliteQuery(
+                source_name=scan.source.source_name,
+                connection_ref=scan.source.connection_ref,
+                sql=statement.sql,
+                parameters=statement.parameters,
+                output_columns=tuple(
+                    CompiledOutputColumn(sql_alias=name, logical_field=name, logical_type=kind)
+                    for name, kind in statement.columns
+                ),
+            )
         fields_by_name = {field.field.name: field for field in scan.projection}
         if scan.source.logical_id.field.name not in fields_by_name:
             fail(ErrorCode.QUERY_COMPILATION_UNSUPPORTED, "Every SQLite remote scan must project its logical ID.")

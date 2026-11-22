@@ -21,7 +21,7 @@ The longer-term vision is to extend YoDb beyond PostgreSQL to heterogeneous data
 - Extensible source-specific query and retrieval operators
 - Visual and multimodal retrieval
 
-*YoDb is in active development. PostgreSQL (with the pgvector and Apache AGE extensions) is currently the supported backend; additional sources and visual retrieval are not yet implemented.*
+*YoDb is in active development. PostgreSQL (with the pgvector and Apache AGE extensions) and SQLite (a read-only file) are the supported backends; additional sources and visual retrieval are not yet implemented.*
 
 **The research project around it** (CSE 598, *A Typed Abstract Query Layer for Heterogeneous
 Retrieval in AI Agent Workflows*; see [REPORT.md](REPORT.md); **start with [RUNBOOK.md](RUNBOOK.md)**):
@@ -203,6 +203,30 @@ returns rows. With YoDb:
   that would read too much is stopped and refused.
 - **Nothing leaks.** Errors never contain passwords, SQL or data values.
 
+## Counting and grouping
+
+Ask for `aggregate` (`count`, `count_distinct`, `sum`, `min`, `max`, `avg`, each
+with an alias) and, optionally, `group_by`. The answer is groups, not records:
+each row holds the group fields and the aliases, and there is no `id`.
+
+```bash
+yodb query catalog/ '{
+  "from": {"dataset": "customer"},
+  "where": {"field": "country", "op": "ne", "value": "FR"},
+  "group_by": ["country"],
+  "aggregate": [{"fn": "count", "as": "customers"}],
+  "order_by": [{"field": "customers", "direction": "desc"}],
+  "page": {"first": 5}
+}'
+```
+
+The rules are SQL's: nulls are skipped, null keys form one group, and a total
+with no `group_by` always returns one row. The database runs the `GROUP BY` when
+it can do so exactly; otherwise YoDb groups the rows it reads, under the usual row
+limit. In this version an aggregate works on one dataset whose fields are all in
+one database: not with `traverse`, and not with a semantic or similarity
+condition. See [docs/query/query-model.mdx](docs/query/query-model.mdx).
+
 ## Searching by similarity, filtering by meaning
 
 With embeddings in a pgvector column, a condition can rank records by how close
@@ -241,9 +265,9 @@ follows the edges, and the rows still come from their tables. See
 
 YoDb is at version 0.1. It is tested, but deliberately small:
 
-- **PostgreSQL only.** No other database, and no SaaS APIs. Graph edges need the
+- **PostgreSQL and SQLite only.** No other database, and no SaaS APIs. Graph edges need the
   Apache AGE extension, embeddings the pgvector extension.
-- **No counting or totals.** There is no `count`, `sum` or `group by`.
+- **Aggregates are single-dataset.** `count`, `sum` and `group by` work, but not across a `traverse`, across databases, or with a semantic or similarity condition.
 - **One relationship per query.** You can follow one `traverse` step (one hop, also over graph edges).
 - **One page of results.** Up to 500 rows per query, with no "next page".
 - **Read-only.** There is no way to write data.
