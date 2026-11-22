@@ -21,6 +21,7 @@ from .contracts import (
 )
 from ..errors import ErrorCode, ErrorDetail, SourceInspectionError, YoDbError
 from .postgres import PostgresCatalogValidator, PostgresSourceInspector
+from .sqlite import SqliteCatalogValidator, SqliteSourceInspector
 from .registry import InspectionAdapterBinding, SourceInspectionRegistry
 
 __all__ = [
@@ -47,6 +48,8 @@ __all__ = [
     "SourceInspectionError",
     "SourceInspector",
     "SourceValidationReport",
+    "SqliteCatalogValidator",
+    "SqliteSourceInspector",
     "ValidationFinding",
     "YoDbError",
 ]

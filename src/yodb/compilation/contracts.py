@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from ..catalog import SourceKind
+from ..catalog import LogicalType, SourceKind
 from ..planning import GraphEdgeScan, RemoteScan
 from ..query.resolution import SourceResolvedQuery
 
@@ -16,6 +16,9 @@ class CompiledOutputColumn:
 
     sql_alias: str
     logical_field: str
+    # The field's logical type, for a backend whose driver returns values that need coercing (SQLite
+    # stores timestamps as text or numbers and booleans as 0/1).  None: the driver's values are used as is.
+    logical_type: LogicalType | None = None
 
 
 @runtime_checkable
@@ -77,3 +80,21 @@ class CompiledPostgresQuery:
         """PostgreSQL is the only backend that can execute this statement."""
 
         return SourceKind.POSTGRES
+
+
+@dataclass(frozen=True)
+class CompiledSqliteQuery:
+    """A SQLite statement with catalog-derived identifiers and bound values.
+
+    ``sql`` uses ``?`` placeholders; user values appear only in ``parameters``.
+    """
+
+    source_name: str
+    connection_ref: str
+    sql: str
+    parameters: tuple[object, ...]
+    output_columns: tuple[CompiledOutputColumn, ...]
+
+    @property
+    def source_kind(self) -> SourceKind:
+        return SourceKind.SQLITE

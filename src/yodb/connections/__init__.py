@@ -9,8 +9,20 @@ from .postgres import (
     PostgresConnectionSettings,
 )
 from .registry import ConnectionAdapterRegistry
+from .sqlite import (
+    EnvSqliteConnectionResolver,
+    MappingSqliteConnectionResolver,
+    SqliteConnectionAdapter,
+    SqliteConnectionReferenceResolver,
+    SqliteConnectionSettings,
+)
 
 __all__ = [
+    "EnvSqliteConnectionResolver",
+    "MappingSqliteConnectionResolver",
+    "SqliteConnectionAdapter",
+    "SqliteConnectionReferenceResolver",
+    "SqliteConnectionSettings",
     "EnvPostgresConnectionResolver",
     "ConnectionReferenceResolver",
     "ConnectionAdapterRegistry",

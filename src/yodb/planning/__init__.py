@@ -79,6 +79,8 @@ from .operators import (
 from .policy import PlannerPolicy
 from .planner import FederatedPhysicalPlanner
 from .postgres_statistics import PostgresStatisticsProvider
+from .sqlite import SQLITE_CAPABILITIES, SqlitePlanningAdapter
+from .sqlite_statistics import SqliteStatisticsProvider
 from .statistics import (
     ColumnStatistics,
     CostDefaults,
@@ -134,6 +136,9 @@ __all__ = [
     "ObservationStore",
     "OptimizerResult",
     "PostgresStatisticsProvider",
+    "SQLITE_CAPABILITIES",
+    "SqlitePlanningAdapter",
+    "SqliteStatisticsProvider",
     "Problem",
     "ScanEstimate",
     "ScanKey",

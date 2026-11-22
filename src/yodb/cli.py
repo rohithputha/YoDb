@@ -9,7 +9,7 @@
 ``CATALOG`` is a directory holding ``datasets.yaml``, ``sources.yaml`` and ``relations.yaml``.
 ``QUERY`` is JSON text, ``@file.json``, or ``-`` for standard input.  Each catalog ``connection_ref``
 is read from the environment variable ``YODB_CONN_<REF>`` (upper-cased, non-alphanumerics as ``_``),
-or from ``--connections FILE`` (a YAML or JSON mapping of reference to libpq conninfo).
+or from ``--connections FILE`` (a YAML or JSON mapping of reference to libpq conninfo, or to a SQLite file path).
 
 Exit status: 0 success, 1 a YoDb error (printed with its code), 2 bad usage, 3 an unexpected failure.
 """
@@ -209,7 +209,7 @@ def _connections(path: str | None) -> Mapping[str, str] | None:
     except yaml.YAMLError as error:
         raise UsageError("the connections file is not valid YAML or JSON") from error
     if not isinstance(loaded, Mapping) or not all(isinstance(k, str) and isinstance(v, str) for k, v in loaded.items()):
-        raise UsageError("the connections file must map each connection reference to a conninfo string")
+        raise UsageError("the connections file must map each connection reference to a conninfo string or a SQLite file path")
     return loaded
 
 

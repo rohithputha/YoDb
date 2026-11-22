@@ -57,6 +57,7 @@ class Visibility(str, Enum):
 class SourceKind(str, Enum):
     POSTGRES = "postgres"
     NEO4J = "neo4j"
+    SQLITE = "sqlite"
 
 
 class Cardinality(str, Enum):
@@ -363,6 +364,11 @@ def _validate_catalog(catalog: Catalog) -> None:
                         f"sources.{source_name}.datasets.{dataset_name}.identity field "
                         f"'{identity_field}' is not mapped"
                     )
+            if source.kind is SourceKind.SQLITE and representation.embeddings:
+                raise CatalogValidationError(
+                    f"sources.{source_name}.datasets.{dataset_name}.embeddings is not supported on a sqlite source "
+                    "(SQLite has no vector search)"
+                )
             for field_name, embedding in representation.embeddings.items():
                 location = f"sources.{source_name}.datasets.{dataset_name}.embeddings.{field_name}"
                 logical_field = catalog.datasets[dataset_name].fields.get(field_name)
@@ -521,6 +527,8 @@ def _validate_graph(catalog: Catalog, source_name: str, source: SourceSpec) -> N
     """A graph declaration: an AGE graph in a PostgreSQL source whose vertex labels stand for datasets."""
 
     location = f"sources.{source_name}.graph"
+    if source.kind is SourceKind.SQLITE:
+        raise CatalogValidationError(f"{location} is not supported on a sqlite source (SQLite has no graph engine)")
     if source.kind is not SourceKind.POSTGRES:
         raise CatalogValidationError(f"{location} is only supported on a postgres source (Apache AGE)")
     _validate_graph_identifier(f"{location}.name", source.graph.name)

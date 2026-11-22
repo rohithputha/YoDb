@@ -10,11 +10,13 @@ from .engine import QueryExecutionEngine
 from .federated import ExecutionTrace, FederatedExecutionPolicy, FederatedPlanExecutor, ScanActual
 from .postgres import PostgresQueryExecutionAdapter
 from .registry import QueryExecutionAdapterRegistry
+from .sqlite import SqliteQueryExecutionAdapter
 
 __all__ = [
     "ActiveCatalogProvider",
     "LogicalRow",
     "PostgresQueryExecutionAdapter",
+    "SqliteQueryExecutionAdapter",
     "QueryExecutionAdapter",
     "QueryExecutionAdapterRegistry",
     "QueryExecutionEngine",

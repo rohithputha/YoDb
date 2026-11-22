@@ -3,6 +3,15 @@
 ## 0.2.0 (unreleased)
 
 ### Added
+- SQLite as a source: `kind: sqlite` in `sources.yaml`, with `YODB_CONN_<REF>` holding the database file's path
+  (also `sqlite:///relative.db`, `sqlite:////absolute.db` or a `file:` URI). The file is opened read-only
+  (`mode=ro`, `PRAGMA query_only`) with one connection per thread; the statement time limit is enforced with a
+  progress handler and reported as `QUERY_TIMEOUT`. Text compares and orders in byte order (`COLLATE BINARY`) and
+  NULLs sort as the coordinator sorts them. Timestamps (text, epoch numbers), booleans (0/1), JSON and UUIDs are
+  coerced to their logical types on read, so timestamp and UUID conditions run in YoDb rather than in SQL.
+  Resources are table or view names. `graph` and `embeddings` are refused on a SQLite source. Statistics come
+  from `sqlite_stat1` when the file was `ANALYZE`d. The compiler's shared SQL code now lives in
+  `compilation/sql.py`, and the relational catalog checks in `inspection/relational.py`.
 - Graph traversal over Apache AGE. A PostgreSQL source may declare a `graph` (the AGE graph name and the
   vertex label that stands for each dataset); a relationship implementation with an `edge_type` on that
   source is then followed by `traverse`, as an *edge join*: the driving side's IDs go to the graph in
