@@ -13,9 +13,10 @@ from datetime import UTC, datetime
 import re
 from typing import Any, Protocol
 
-from ..catalog import Catalog, LogicalType, SourceKind
+from ..catalog import Catalog, SourceKind
 from ..connections.contracts import SourceConnectionAdapter
 from ..errors import ErrorCode, ErrorDetail, SourceInspectionError, YoDbError
+from .relational import error as _error, validate_datasets
 from .contracts import (
     FindingSeverity,
     InspectionCapability,
@@ -263,70 +264,7 @@ class PostgresCatalogValidator:
         if source.graph is not None:
             findings.extend(_validate_graph(catalog, source.graph, inspection))
 
-        for dataset_name, representation in source.datasets.items():
-            location = f"sources.{inspection.source_name}.datasets.{dataset_name}"
-            resource = inspection.resources.get(representation.resource)
-            if resource is None:
-                findings.append(
-                    _error(
-                        "resource_not_found",
-                        f"Configured resource '{representation.resource}' was not found in PostgreSQL.",
-                        f"{location}.resource",
-                    )
-                )
-                continue
-
-            if resource.kind not in (ResourceKind.TABLE, ResourceKind.VIEW):
-                findings.append(
-                    _error(
-                        "resource_kind_incompatible",
-                        f"Configured resource '{representation.resource}' is not a PostgreSQL table or view.",
-                        f"{location}.resource",
-                    )
-                )
-                continue
-
-            physical_identity_fields: list[str] = []
-            for field_name, binding in representation.fields.items():
-                field_location = f"{location}.fields.{field_name}.physical_name"
-                physical_field = resource.fields.get(binding.physical_name)
-                if physical_field is None:
-                    findings.append(
-                        _error(
-                            "field_not_found",
-                            f"Configured field '{binding.physical_name}' was not found in '{representation.resource}'.",
-                            field_location,
-                        )
-                    )
-                    continue
-
-                logical_type = catalog.datasets[dataset_name].fields[field_name].type
-                if not _type_is_compatible(logical_type, physical_field.type_family):
-                    findings.append(
-                        _error(
-                            "field_type_incompatible",
-                            f"Logical type '{logical_type.value}' is incompatible with PostgreSQL type "
-                            f"'{physical_field.native_type}'.",
-                            field_location,
-                        )
-                    )
-                if field_name in representation.identity:
-                    physical_identity_fields.append(binding.physical_name)
-
-            if len(physical_identity_fields) == len(representation.identity):
-                identity_fields = tuple(physical_identity_fields)
-                known_keys = {
-                    resource.primary_key.fields if resource.primary_key else (),
-                    *(constraint.fields for constraint in resource.unique_constraints),
-                }
-                if identity_fields not in known_keys:
-                    findings.append(
-                        _error(
-                            "identity_not_unique",
-                            f"Identity fields {list(identity_fields)!r} are not backed by a PostgreSQL primary or unique key.",
-                            f"{location}.identity",
-                        )
-                    )
+        findings.extend(validate_datasets(catalog, source, inspection, "PostgreSQL"))
 
         return SourceValidationReport(
             source_name=inspection.source_name,
@@ -539,26 +477,6 @@ def _postgres_type_family(native_type: str) -> str:
 def _vector_dimensions(native_type: str) -> int | None:
     match = _VECTOR_DIMENSIONS.fullmatch(native_type)
     return int(match.group("dimensions")) if match else None
-
-
-def _type_is_compatible(logical_type: LogicalType, physical_family: str) -> bool:
-    compatible_families = {
-        LogicalType.ID: {"int", "string", "uuid"},
-        LogicalType.STRING: {"string"},
-        LogicalType.TEXT: {"string"},
-        LogicalType.INT: {"int"},
-        LogicalType.FLOAT: {"int", "float"},
-        LogicalType.BOOL: {"bool"},
-        LogicalType.TIMESTAMP: {"timestamp"},
-        LogicalType.UUID: {"uuid"},
-        LogicalType.JSON: {"json"},
-        LogicalType.BYTES: {"bytes"},
-    }
-    return physical_family in compatible_families[logical_type]
-
-
-def _error(code: str, message: str, location: str) -> ValidationFinding:
-    return ValidationFinding(severity=FindingSeverity.ERROR, code=code, message=message, location=location)
 
 
 def _as_strings(value: Any) -> tuple[str, ...]:

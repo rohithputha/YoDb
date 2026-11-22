@@ -13,6 +13,7 @@ from ..planning import (
     FederatedPhysicalPlanner,
     PostgresPlanningAdapter,
     SourcePlanningRegistry,
+    SqlitePlanningAdapter,
     StatisticsService,
 )
 from ..query import QueryValidationPolicy, bind_query, parse_query, resolve_query_sources
@@ -51,7 +52,7 @@ class QueryExecutionEngine:
         self._validation_policy = validation_policy
         self._statistics = statistics
         self._planner = planner or FederatedPhysicalPlanner(
-            SourcePlanningRegistry([PostgresPlanningAdapter()]),
+            SourcePlanningRegistry([PostgresPlanningAdapter(), SqlitePlanningAdapter()]),
             extensions=tuple(extensions),
             statistics=statistics,
             costs=cost_parameters or CostParameters(),

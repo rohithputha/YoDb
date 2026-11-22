@@ -2,23 +2,34 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import re
 
-from ..catalog import LogicalType, SourceKind, VectorMetric
-from ..errors import ErrorCode, ErrorDetail, QueryError
-from ..query.models import (
-    BoundAllExpression,
-    BoundAnyExpression,
-    BoundFilterExpression,
-    BoundNotExpression,
-    BoundPredicate,
-    ComparisonOperator,
-)
+from ..catalog import SourceKind, VectorMetric
+from ..errors import ErrorCode
 from ..planning import GraphEdgeScan, RemoteScan
-from ..query.resolution import QuerySourceShape, ResolvedField, SourceResolvedQuery
+from ..query.resolution import QuerySourceShape, SourceResolvedQuery
 from .contracts import CompiledOutputColumn, CompiledPostgresQuery
+from .sql import (
+    CompileContext,
+    SqlDialect,
+    column_name as _column,
+    compile_expression,
+    effective_limit,
+    fail as _fail,
+    field_map,
+    order_term,
+    quote_identifier as _quote_identifier,
+    require_resolved_field,
+    resource_name as _resource,
+)
+
+POSTGRES_DIALECT = SqlDialect(
+    name="PostgreSQL",
+    source_kind=SourceKind.POSTGRES,
+    placeholder="%s",
+    text_collation='"C"',          # byte order, i.e. code-point order for UTF-8
+)
 
 # pgvector distance operators: smaller distance = nearer for all three.
 _VECTOR_OPERATORS = {
@@ -36,28 +47,6 @@ DISTANCE_COLUMN = "_distance"
 _GRAPH_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # The dollar-quote tag around the Cypher text; the text can only hold identifiers and ``$ids``.
 _CYPHER_TAG = "$yodb_cypher$"
-
-
-_COMPILED_OPERATORS = frozenset(
-    {
-        ComparisonOperator.EQ,
-        ComparisonOperator.NE,
-        ComparisonOperator.IN,
-        ComparisonOperator.NOT_IN,
-        ComparisonOperator.IS_NULL,
-        ComparisonOperator.IS_NOT_NULL,
-        ComparisonOperator.GT,
-        ComparisonOperator.GTE,
-        ComparisonOperator.LT,
-        ComparisonOperator.LTE,
-    }
-)
-
-
-@dataclass(frozen=True)
-class _CompileContext:
-    query: SourceResolvedQuery | None
-    fields_by_name: dict[str, ResolvedField]
 
 
 class PostgresQueryCompiler:
@@ -85,21 +74,20 @@ class PostgresQueryCompiler:
                 "The PostgreSQL compiler requires a PostgreSQL source binding.",
             )
 
-        context = _CompileContext(query=query, fields_by_name=_field_map(query))
+        context = CompileContext(query=query, fields_by_name=field_map(query), dialect=POSTGRES_DIALECT)
         selected = tuple(
-            _require_resolved_field(context, field.name, "select") for field in query.query.select
+            require_resolved_field(context, field.name, "select") for field in query.query.select
         )
         projections = ", ".join(
             f"{_column(field)} AS {_quote_identifier(field.field.name)}" for field in selected
         )
         parameters: list[object] = []
-        where = _compile_expression(query.query.where, context, parameters)
+        where = compile_expression(query.query.where, context, parameters)
         order_by = ", ".join(
-            f"{_order_column(_require_resolved_field(context, term.field.name, 'order_by'))} "
-            f"{term.direction.value.upper()}"
+            order_term(require_resolved_field(context, term.field.name, "order_by"), term.direction.value, POSTGRES_DIALECT)
             for term in query.query.order_by
         )
-        limit = _effective_limit(query)
+        limit = effective_limit(query)
         parameters.append(limit)
 
         statements = [f"SELECT {projections}", f"FROM {_resource(source.resource)}"]
@@ -137,7 +125,7 @@ class PostgresQueryCompiler:
                 ErrorCode.QUERY_COMPILATION_UNSUPPORTED,
                 "Every PostgreSQL remote scan must project its logical ID.",
             )
-        context = _CompileContext(query=None, fields_by_name=fields_by_name)
+        context = CompileContext(query=None, fields_by_name=fields_by_name, dialect=POSTGRES_DIALECT)
         projections = ", ".join(
             f"{_column(field)} AS {_quote_identifier(field.field.name)}" for field in scan.projection
         )
@@ -156,7 +144,7 @@ class PostgresQueryCompiler:
                 f", {_quote_identifier(vector.column)} {_VECTOR_OPERATORS[vector.metric]} %s::vector "
                 f"AS {_quote_identifier(DISTANCE_COLUMN)}"
             )
-        where = _compile_expression(scan.pushed_filter, context, parameters)
+        where = compile_expression(scan.pushed_filter, context, parameters)
         if scan.key_filter is not None:
             if not scan.key_filter:
                 _fail(
@@ -184,14 +172,13 @@ class PostgresQueryCompiler:
             parameters.append(_vector_literal(vector.query_vector))
             statements.append(
                 f"ORDER BY {_quote_identifier(vector.column)} {_VECTOR_OPERATORS[vector.metric]} %s::vector, "
-                f"{_order_column(scan.source.logical_id)} ASC"
+                f"{order_term(scan.source.logical_id, 'asc', POSTGRES_DIALECT)}"
             )
         elif scan.order_by:
             statements.append(
                 "ORDER BY "
                 + ", ".join(
-                    f"{_order_column(_require_resolved_field(context, term.field.name, 'order_by'))} "
-                    f"{term.direction.value.upper()}"
+                    order_term(require_resolved_field(context, term.field.name, "order_by"), term.direction.value, POSTGRES_DIALECT)
                     for term in scan.order_by
                 )
             )
@@ -261,130 +248,5 @@ class PostgresQueryCompiler:
         )
 
 
-def _compile_expression(
-    expression: BoundFilterExpression | None,
-    context: _CompileContext,
-    parameters: list[object],
-) -> str | None:
-    if expression is None:
-        return None
-    if isinstance(expression, BoundPredicate):
-        return _compile_predicate(expression, context, parameters)
-    if isinstance(expression, BoundAllExpression):
-        return "(" + " AND ".join(
-            _compile_expression(child, context, parameters) for child in expression.expressions
-        ) + ")"
-    if isinstance(expression, BoundAnyExpression):
-        return "(" + " OR ".join(
-            _compile_expression(child, context, parameters) for child in expression.expressions
-        ) + ")"
-    if isinstance(expression, BoundNotExpression):
-        child = _compile_expression(expression.expression, context, parameters)
-        assert child is not None
-        return f"(NOT {child})"
-    raise AssertionError(f"Unknown bound expression: {expression!r}")
-
-
-def _compile_predicate(
-    predicate: BoundPredicate,
-    context: _CompileContext,
-    parameters: list[object],
-) -> str:
-    field = _require_resolved_field(context, predicate.field.name, "where")
-    operator = predicate.operator
-    if operator not in _COMPILED_OPERATORS:
-        _fail(
-            ErrorCode.QUERY_COMPILATION_UNSUPPORTED,
-            f"Operator '{operator.value}' is not compiled for PostgreSQL yet.",
-            "where.op",
-        )
-    column = _column(field)
-    if operator is ComparisonOperator.IS_NULL:
-        return f"{column} IS NULL"
-    if operator is ComparisonOperator.IS_NOT_NULL:
-        return f"{column} IS NOT NULL"
-    if operator in {ComparisonOperator.IN, ComparisonOperator.NOT_IN}:
-        assert isinstance(predicate.value, tuple)
-        placeholders = ", ".join("%s" for _ in predicate.value)
-        parameters.extend(predicate.value)
-        keyword = "IN" if operator is ComparisonOperator.IN else "NOT IN"
-        return f"{column} {keyword} ({placeholders})"
-
-    token = {
-        ComparisonOperator.EQ: "=",
-        ComparisonOperator.NE: "<>",
-        ComparisonOperator.GT: ">",
-        ComparisonOperator.GTE: ">=",
-        ComparisonOperator.LT: "<",
-        ComparisonOperator.LTE: "<=",
-    }.get(operator)
-    if token is None:
-        raise AssertionError(f"Unhandled compiled operator: {operator!r}")
-    parameters.append(predicate.value)
-    return f"{column} {token} %s"
-
-
-def _field_map(query: SourceResolvedQuery) -> dict[str, ResolvedField]:
-    source = query.identity_source
-    fields = {field.field.name: field for field in source.fields}
-    fields.setdefault(source.logical_id.field.name, source.logical_id)
-    return fields
-
-
-def _require_resolved_field(
-    context: _CompileContext,
-    field_name: str,
-    location: str,
-) -> ResolvedField:
-    try:
-        return context.fields_by_name[field_name]
-    except KeyError:
-        _fail(
-            ErrorCode.SOURCE_BINDING_UNAVAILABLE,
-            f"Field '{field_name}' is not available in the selected PostgreSQL source binding.",
-            location,
-        )
-
-
-def _effective_limit(query: SourceResolvedQuery) -> int:
-    page_limit = query.query.page.first
-    assert page_limit is not None
-    requested_maximum = query.query.constraints.maximum_results
-    return min(page_limit, requested_maximum) if requested_maximum is not None else page_limit
-
-
 def _vector_literal(values: tuple[float, ...]) -> str:
     return "[" + ",".join(repr(float(x)) for x in values) + "]"
-
-
-def _resource(resource: str) -> str:
-    parts = resource.split(".")
-    if not all(part for part in parts):
-        _fail(
-            ErrorCode.SOURCE_BINDING_UNAVAILABLE,
-            "The selected source resource has an invalid qualified name.",
-        )
-    return ".".join(_quote_identifier(part) for part in parts)
-
-
-def _column(field: ResolvedField) -> str:
-    return _quote_identifier(field.physical_name)
-
-
-def _order_column(field: ResolvedField) -> str:
-    """A text column is ordered with ``COLLATE "C"`` (byte order, i.e. code-point order for UTF-8), so a
-    source orders text exactly as the coordinator does and a result never depends on the database's locale.
-    A column the inspection saw as non-text (an integer or uuid ``id``) cannot take a collation."""
-
-    collatable = field.physical_family == "string" or (
-        field.physical_family is None and field.field.spec.type in (LogicalType.STRING, LogicalType.TEXT)
-    )
-    return f'{_column(field)} COLLATE "C"' if collatable else _column(field)
-
-
-def _quote_identifier(identifier: str) -> str:
-    return '"' + identifier.replace('"', '""') + '"'
-
-
-def _fail(code: ErrorCode, message: str, location: str | None = None) -> None:
-    raise QueryError(ErrorDetail(code=code, message=message, retryable=False, location=location))
