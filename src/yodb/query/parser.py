@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import re
 from typing import Any
 
 from ..errors import ErrorCode
 from .models import (
+    AggregateFunction,
+    AggregateTerm,
     AllExpression,
     AnyExpression,
     ComparisonOperator,
@@ -34,7 +37,11 @@ from .shape import reject_unknown as _reject_unknown
 MAXIMUM_EXPRESSION_DEPTH = 32
 MAXIMUM_EXPRESSION_TERMS = 1_000
 
-_QUERY_KEYS = frozenset({"from", "select", "where", "order_by", "page", "constraints"})
+_QUERY_KEYS = frozenset({"from", "select", "where", "order_by", "page", "constraints", "group_by", "aggregate"})
+_AGGREGATE_KEYS = frozenset({"fn", "field", "as"})
+_ALIAS = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+MAXIMUM_AGGREGATE_TERMS = 20
+MAXIMUM_GROUP_KEYS = 8
 _FROM_KEYS = frozenset({"dataset", "as"})
 _PREDICATE_KEYS = frozenset({"field", "op", "value"})
 _ORDER_KEYS = frozenset({"field", "direction"})
@@ -79,6 +86,8 @@ def parse_query(
         order_by=_parse_order_by(root.get("order_by")),
         page=_parse_page(root["page"]) if "page" in root else None,
         constraints=_parse_constraints(root["constraints"]) if "constraints" in root else None,
+        group_by=_parse_group_by(root.get("group_by")),
+        aggregate=_parse_aggregate(root.get("aggregate")),
     )
 
 
@@ -111,6 +120,51 @@ def _parse_select(raw: Any) -> tuple[str, ...] | None:
     if len(set(fields)) != len(fields):
         _fail(ErrorCode.QUERY_SHAPE_INVALID, "'select' must not contain duplicate fields.", "select")
     return fields
+
+
+def _parse_group_by(raw: Any) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    values = _list(raw, "group_by")
+    fields = tuple(_non_empty_string(value, f"group_by[{index}]") for index, value in enumerate(values))
+    if not fields:
+        _fail(ErrorCode.QUERY_SHAPE_INVALID, "'group_by' must name at least one field (omit it to aggregate everything).", "group_by")
+    if len(set(fields)) != len(fields):
+        _fail(ErrorCode.QUERY_SHAPE_INVALID, "'group_by' must not contain duplicate fields.", "group_by")
+    if len(fields) > MAXIMUM_GROUP_KEYS:
+        _fail(ErrorCode.QUERY_LIMIT_INVALID, f"'group_by' may name at most {MAXIMUM_GROUP_KEYS} fields.", "group_by")
+    return fields
+
+
+def _parse_aggregate(raw: Any) -> tuple[AggregateTerm, ...]:
+    if raw is None:
+        return ()
+    values = _list(raw, "aggregate")
+    if not values:
+        _fail(ErrorCode.QUERY_SHAPE_INVALID, "'aggregate' must contain at least one aggregate.", "aggregate")
+    if len(values) > MAXIMUM_AGGREGATE_TERMS:
+        _fail(ErrorCode.QUERY_LIMIT_INVALID, f"'aggregate' may hold at most {MAXIMUM_AGGREGATE_TERMS} aggregates.", "aggregate")
+    terms: list[AggregateTerm] = []
+    for index, raw_term in enumerate(values):
+        location = f"aggregate[{index}]"
+        term = _mapping(raw_term, location)
+        _reject_unknown(term, _AGGREGATE_KEYS, location)
+        name = _non_empty_string(term.get("fn"), f"{location}.fn")
+        try:
+            function = AggregateFunction(name)
+        except ValueError:
+            known = ", ".join(item.value for item in AggregateFunction)
+            _fail(ErrorCode.QUERY_AGGREGATE_INVALID, f"Unknown aggregate '{name}'; use one of: {known}.", f"{location}.fn")
+        field = _non_empty_string(term["field"], f"{location}.field") if "field" in term else None
+        alias = _non_empty_string(term.get("as"), f"{location}.as")
+        if not _ALIAS.fullmatch(alias):
+            _fail(
+                ErrorCode.QUERY_SHAPE_INVALID,
+                "An aggregate's 'as' must be letters, digits and underscores, not starting with a digit.",
+                f"{location}.as",
+            )
+        terms.append(AggregateTerm(function=function, field=field, alias=alias))
+    return tuple(terms)
 
 
 class _Budget:

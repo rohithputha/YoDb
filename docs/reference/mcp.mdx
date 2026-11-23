@@ -119,9 +119,10 @@ agent does not need these pages.
 Timestamps are returned as RFC 3339 text and decimals as text. When a page comes
 back full, the answer carries a `note` saying that more rows may match. There is
 no next page in V0.1, so the agent has to narrow its filter or raise
-`page.first` (at most 500). There is also no aggregation, so an agent counts by
-fetching rows. Read [Limits](/reference/limits) before you rely on an agent for
-totals over large tables.
+`page.first` (at most 500). To count or total, the agent asks for an `aggregate`
+(optionally with `group_by`), which returns groups with no `id`; the query tool's
+guide explains the form. Read [Limits](/reference/limits) for what an aggregate
+cannot be combined with.
 
 ### `explain`
 

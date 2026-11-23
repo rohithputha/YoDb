@@ -9,9 +9,9 @@ from hashlib import sha256
 import json
 from typing import ClassVar, Protocol, TypeAlias, runtime_checkable
 
-from ..catalog import SourceKind, VectorMetric
+from ..catalog import LogicalType, SourceKind, VectorMetric
 from ..operators import OperatorKind
-from ..query.models import BoundFilterExpression, BoundOrderTerm, BoundQuery, RuleUse
+from ..query.models import AggregateFunction, BoundFilterExpression, BoundOrderTerm, BoundQuery, RuleUse
 from ..query.resolution import ResolvedField, SingleSourceQueryBinding, SourceResolvedQuery
 from .capabilities import SourceCapabilities
 from .expressions import filter_fields, filter_shape
@@ -32,6 +32,7 @@ class ResultShape(str, Enum):
     RECORDS = "records"
     ID_SET = "id_set"
     EDGE_SET = "edge_set"
+    AGGREGATES = "aggregates"       # groups, not records: no logical ID
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,51 @@ class PlanProperties:
     completeness: ResultCompleteness
     result_shape: ResultShape
     catalog_fingerprint: str
+    # What the rows are called when that is not ``output_fields`` (an aggregate's rows carry its aliases).
+    names: tuple[str, ...] | None = None
+
+    @property
+    def output_names(self) -> tuple[str, ...]:
+        return self.names if self.names is not None else tuple(field.field.name for field in self.output_fields)
+
+
+@dataclass(frozen=True)
+class AggregateMeasure:
+    """One aggregate to compute: ``function(field)`` named ``alias``; ``field`` is None for ``COUNT(*)``."""
+
+    function: AggregateFunction
+    field: ResolvedField | None
+    alias: str
+    result_type: LogicalType
+
+
+@dataclass(frozen=True)
+class AggregateSpec:
+    """Group the rows by ``group_by`` and compute ``measures`` for each group.
+
+    With no group keys the whole input is one group (and an empty input still gives one row);
+    with no measures the result is the distinct combinations of the keys.
+    """
+
+    group_by: tuple[ResolvedField, ...]
+    measures: tuple[AggregateMeasure, ...]
+
+    @property
+    def output_names(self) -> tuple[str, ...]:
+        return (*(key.field.name for key in self.group_by), *(measure.alias for measure in self.measures))
+
+    def describe(self) -> str:
+        parts = [
+            f"{m.function.value}({'*' if m.field is None else m.field.field.name}) as {m.alias}" for m in self.measures
+        ]
+        by = f" by {', '.join(key.field.name for key in self.group_by)}" if self.group_by else ""
+        return f"{', '.join(parts) if parts else 'distinct'}{by}"
+
+    def shape(self) -> dict[str, object]:
+        return {
+            "group_by": [key.field.name for key in self.group_by],
+            "measures": [[m.function.value, None if m.field is None else m.field.field.name, m.alias] for m in self.measures],
+        }
 
 
 @dataclass(frozen=True)
@@ -69,6 +115,8 @@ class SourceOperationRequest:
     order_by: tuple[BoundOrderTerm, ...]
     limit: int | None
     complete_result: bool
+    # Compute this aggregate at the source; ``order_by`` and ``limit`` then apply to its groups.
+    aggregate: AggregateSpec | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +130,8 @@ class PushdownDecision:
     accepted_limit: int | None
     limit_is_guaranteed: bool
     reasons: tuple[str, ...] = ()
+    # The source will compute the requested aggregate (only ever with the whole filter accepted).
+    accepted_aggregate: bool = False
 
 
 @runtime_checkable
@@ -189,10 +239,13 @@ class RemoteScan(PhysicalNode):
     # Largest ID set this scan's source accepts as a restriction; None means the
     # source cannot be restricted, so the executor never tries.
     key_lookup_limit: int | None = None
+    # Set when the source computes an aggregate: the rows of this scan are its groups.
+    aggregate: AggregateSpec | None = None
 
     def shape(self) -> dict[str, object]:
         return {
             "kind": "remote_scan",
+            "aggregate": None if self.aggregate is None else self.aggregate.shape(),
             "source": self.source.source_name,
             "fields": [field.field.name for field in self.projection],
             "filter": filter_shape(self.pushed_filter),
@@ -206,16 +259,19 @@ class RemoteScan(PhysicalNode):
         }
 
     def describe(self) -> "PlanExplanationNode":
+        detail = ()
+        if self.vector_search is not None:
+            detail = (f"vector_search={self.vector_search.metric.value} top {self.vector_search.shortlist_size}",)
+        if self.aggregate is not None:
+            detail = (f"aggregate at source: {self.aggregate.describe()}",)
         return PlanExplanationNode(
             kind="remote_scan",
             location=self.source.source_name,
-            fields=tuple(field.field.name for field in self.projection),
+            fields=self.aggregate.output_names if self.aggregate is not None else tuple(field.field.name for field in self.projection),
             pushed_filter_fields=filter_fields(self.pushed_filter),
             ordering=tuple(f"{term.field.name} {term.direction.value}" for term in self.order_by),
             limit=self.limit,
-            detail=()
-            if self.vector_search is None
-            else (f"vector_search={self.vector_search.metric.value} top {self.vector_search.shortlist_size}",),
+            detail=detail,
         )
 
 
@@ -328,6 +384,27 @@ class CoordinatorFilter(UnaryNode):
 
 
 @dataclass(frozen=True)
+class CoordinatorAggregate(UnaryNode):
+    """YoDb groups the rows its input produced and computes the aggregates (the source could not do it exactly)."""
+
+    operator: ClassVar[OperatorKind] = OperatorKind.AGGREGATE
+
+    input: "PhysicalPlan"
+    spec: AggregateSpec
+    properties: PlanProperties
+
+    def shape(self) -> dict[str, object]:
+        return {"kind": "coordinator_aggregate", "input": self.input.shape(), "aggregate": self.spec.shape()}
+
+    def describe(self) -> "PlanExplanationNode":
+        return PlanExplanationNode(
+            "coordinator_aggregate",
+            "coordinator",
+            self.spec.output_names,
+            detail=(f"aggregate in YoDb: {self.spec.describe()}",),
+        )
+
+@dataclass(frozen=True)
 class CoordinatorSortPage(UnaryNode):
     """Global deterministic ordering and page placement at the coordinator (the order and limit operators)."""
 
@@ -352,7 +429,7 @@ class CoordinatorSortPage(UnaryNode):
         return PlanExplanationNode(
             "coordinator_sort_page",
             "coordinator",
-            tuple(field.field.name for field in self.properties.output_fields),
+            self.properties.output_names,
             ordering=tuple(f"{term.field.name} {term.direction.value}" for term in self.order_by),
             limit=self.first,
             detail=tuple(f"note: {note}" for note in self.notes),

@@ -8,9 +8,10 @@ collation semantics are not pinned down yet, so they run in YoDb.
 from __future__ import annotations
 
 from ..catalog import LogicalType, SourceKind, VectorMetric
-from ..query.models import ComparisonOperator
+from ..query.models import AggregateFunction, ComparisonOperator
 from .adapter import CapabilityPlanningAdapter
 from .capabilities import (
+    AggregateCapability,
     BooleanOperator,
     GraphCapability,
     KeyLookupCapability,
@@ -63,6 +64,11 @@ POSTGRES_CAPABILITIES = SourceCapabilities(
     ),
     # Requires the Apache AGE extension on the source and a ``graph`` declaration in the catalog.
     graph=GraphCapability(engine="age", maximum_keys=1_000),
+    aggregate=AggregateCapability(
+        functions=frozenset(AggregateFunction),
+        group_types=_SCALAR_TYPES,
+        measure_types=_SCALAR_TYPES,
+    ),
 )
 
 

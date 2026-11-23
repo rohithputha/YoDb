@@ -7,8 +7,9 @@ cover every part of it, and reports why anything was refused.
 
 from __future__ import annotations
 
-from ..catalog import SourceKind
+from ..catalog import LogicalType, SourceKind
 from ..query.models import (
+    AggregateFunction,
     BoundAllExpression,
     BoundAnyExpression,
     BoundFilterExpression,
@@ -18,7 +19,7 @@ from ..query.models import (
 )
 from ..query.resolution import SingleSourceQueryBinding
 from .capabilities import BooleanOperator, SourceCapabilities
-from .contracts import PushdownDecision, SourceOperationRequest, SourcePlanningAdapter
+from .contracts import AggregateSpec, PushdownDecision, SourceOperationRequest, SourcePlanningAdapter
 from .expressions import top_level_conjuncts
 
 
@@ -64,9 +65,19 @@ class CapabilityPlanningAdapter(SourcePlanningAdapter):
         # together with the order that defines it.
         accepted_order: tuple = ()
         accepted_limit = None
-        if requested.complete_result and residual is None:
+        # An aggregate is computed remotely only over exactly the rows the coordinator would aggregate, so the
+        # whole filter must be accepted; the order and limit then apply to its groups, never to raw rows.
+        aggregate_ok = False
+        text_aliases: frozenset[str] = frozenset()
+        if requested.aggregate is not None:
+            aggregate_ok = requested.complete_result and residual is None and self._accepts_aggregate(requested.aggregate, reasons)
+            text_aliases = frozenset(
+                m.alias for m in requested.aggregate.measures if m.result_type in {LogicalType.STRING, LogicalType.TEXT}
+            )
+        if requested.complete_result and residual is None and (requested.aggregate is None or aggregate_ok):
             order_ok = caps.supports_order and all(
-                term.field.spec.type in caps.orderable_types for term in requested.order_by
+                term.field.spec.type in caps.orderable_types and term.field.name not in text_aliases
+                for term in requested.order_by
             )
             if order_ok:
                 accepted_order = requested.order_by
@@ -82,7 +93,30 @@ class CapabilityPlanningAdapter(SourcePlanningAdapter):
             accepted_limit=accepted_limit,
             limit_is_guaranteed=accepted_limit is not None,
             reasons=tuple(dict.fromkeys(reasons)),
+            accepted_aggregate=aggregate_ok,
         )
+
+    def _accepts_aggregate(self, spec: AggregateSpec, reasons: list[str]) -> bool:
+        capability = self._capabilities.aggregate
+        if capability is None:
+            reasons.append("the source declares no aggregates")
+            return False
+        ok = True
+        for key in spec.group_by:
+            if key.field.spec.type not in capability.group_types:
+                reasons.append(f"the source cannot group by type '{key.field.spec.type.value}'")
+                ok = False
+        for measure in spec.measures:
+            if measure.function not in capability.functions:
+                reasons.append(f"the source cannot compute '{measure.function.value}'")
+                ok = False
+            elif measure.field is not None and measure.function is not AggregateFunction.COUNT:
+                if measure.field.field.spec.type not in capability.measure_types:
+                    reasons.append(
+                        f"the source cannot compute '{measure.function.value}' over type '{measure.field.field.spec.type.value}'"
+                    )
+                    ok = False
+        return ok
 
     def _accepts(
         self,

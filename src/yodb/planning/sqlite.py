@@ -10,9 +10,9 @@ stays well under SQLite's bound-variable limit.
 from __future__ import annotations
 
 from ..catalog import LogicalType, SourceKind
-from ..query.models import ComparisonOperator
+from ..query.models import AggregateFunction, ComparisonOperator
 from .adapter import CapabilityPlanningAdapter
-from .capabilities import BooleanOperator, KeyLookupCapability, SourceCapabilities, TextOrdering
+from .capabilities import AggregateCapability, BooleanOperator, KeyLookupCapability, SourceCapabilities, TextOrdering
 
 _PUSHED_TYPES = frozenset(
     {
@@ -51,6 +51,13 @@ SQLITE_CAPABILITIES = SourceCapabilities(
     key_lookup=KeyLookupCapability(maximum_keys=500),
     vector_search=None,
     graph=None,
+    # Grouping and min/max follow the same types as filtering: a timestamp or UUID grouped in SQL would split
+    # what YoDb treats as one value (text '...Z' and an epoch number), so those are grouped in YoDb.
+    aggregate=AggregateCapability(
+        functions=frozenset(AggregateFunction),
+        group_types=_PUSHED_TYPES,
+        measure_types=_PUSHED_TYPES,
+    ),
 )
 
 

@@ -5,6 +5,7 @@ extension operators plug into the slot after filtering by
 implementing :class:`ExtensionOperator`.  See ``plans/v0.1-operators.md``.
 """
 
+from .aggregate import AggregateOperator
 from .base import Claim, ExtensionOperator, ExtensionPlan, PlanningExtension, PlanningServices, Strategy, effective_limit
 from .combine import CombineDecision, CombineOperator
 from .filter import FilterOperator
@@ -14,6 +15,7 @@ from .project import ProjectOperator
 from .scan import ScanOperator, ScanPlan
 
 __all__ = [
+    "AggregateOperator",
     "Claim",
     "CombineDecision",
     "CombineOperator",

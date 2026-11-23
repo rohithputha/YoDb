@@ -9,14 +9,18 @@ import math
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from ..catalog import LogicalType, Visibility
+from ..catalog import FieldSpec, LogicalType, Visibility
 from ..errors import ErrorCode, ErrorDetail, QueryError
 from ..runtime.contracts import CatalogEvaluation
 from ..runtime.service import InMemoryCatalogRuntime
 from .fingerprint import catalog_fingerprint, query_fingerprint
 from .models import (
+    AggregateFunction,
+    AggregateTerm,
     AllExpression,
     AnyExpression,
+    BoundAggregateTerm,
+    BoundAggregation,
     BoundAllExpression,
     BoundAnyExpression,
     BoundDataset,
@@ -128,21 +132,33 @@ def bind_query(
         _fail(ErrorCode.DATASET_NOT_FOUND, f"Unknown dataset '{request.root.dataset}'.", "from.dataset")
     root = BoundDataset(name=request.root.dataset, scope=request.root.scope, spec=dataset)
 
-    selected_names = (
-        request.select
-        if request.select is not None
-        else tuple(
-            field_name
-            for field_name, field in dataset.fields.items()
-            if field.visibility is Visibility.PUBLIC
+    aggregation: BoundAggregation | None = None
+    if request.aggregate or request.group_by:
+        if request.select is not None:
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_INVALID,
+                "'select' cannot be combined with 'aggregate' or 'group_by': the result's columns are the group keys "
+                "and the aggregate aliases.",
+                "select",
+            )
+        aggregation = _bind_aggregation(request, root)
+        selected_fields: tuple[BoundField, ...] = ()
+    else:
+        selected_names = (
+            request.select
+            if request.select is not None
+            else tuple(
+                field_name
+                for field_name, field in dataset.fields.items()
+                if field.visibility is Visibility.PUBLIC
+            )
         )
-    )
-    selected_fields = tuple(
-        bind_public_field(root, field_name, f"select[{index}]")
-        for index, field_name in enumerate(selected_names)
-    )
-    if "id" not in selected_names:
-        selected_fields = (bind_public_field(root, "id", "select"), *selected_fields)
+        selected_fields = tuple(
+            bind_public_field(root, field_name, f"select[{index}]")
+            for index, field_name in enumerate(selected_names)
+        )
+        if "id" not in selected_names:
+            selected_fields = (bind_public_field(root, "id", "select"), *selected_fields)
 
     from ..rules import RuleExpansion       # rules sit above the query package
     from ..rules.expand import check_expanded_size
@@ -154,8 +170,18 @@ def bind_query(
     if expansion.uses:
         check_expanded_size(bound_filter)
     validate_placement(bound_filter, terms, policy)
-    bound_order = _bind_order(request.order_by, root)
-    effective_order = _with_id_tiebreaker(bound_order, root)
+    if aggregation is not None:
+        if extension_terms(bound_filter):
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_UNSUPPORTED,
+                "Aggregates cannot be combined with a semantic or similarity condition yet.",
+                "where",
+            )
+        bound_order = _bind_aggregate_order(request.order_by, aggregation)
+        effective_order = _with_group_tiebreaker(bound_order, aggregation)
+    else:
+        bound_order = _bind_order(request.order_by, root)
+        effective_order = _with_id_tiebreaker(bound_order, root)
     page = _validate_page(request.page, policy)
     constraints = request.constraints or QueryConstraints()
     _validate_constraints(constraints, policy)
@@ -172,6 +198,7 @@ def bind_query(
         "query_language_version": "yodb/v0.1-query-core",
         "from": {"dataset": root.name, "scope": root.scope},
         "select": sorted(field.name for field in selected_fields),
+        **_aggregation_payload(aggregation),
         "where": _expression_payload(bound_filter, terms),
         "order_by": [
             {"field": term.field.name, "direction": term.direction.value} for term in effective_order
@@ -189,6 +216,7 @@ def bind_query(
         catalog_fingerprint=catalog_fingerprint(catalog),
         rules=expansion.uses,
         explicit_order=bool(request.order_by),
+        aggregation=aggregation,
     )
 
 
@@ -255,6 +283,124 @@ def _bind_order(terms: tuple[OrderTerm, ...], root: BoundDataset) -> tuple[Bound
             )
         bound.append(BoundOrderTerm(field, term.direction))
     return tuple(bound)
+
+
+_SUMMABLE_TYPES = frozenset({LogicalType.INT, LogicalType.FLOAT})
+_EXTREME_TYPES = frozenset(
+    {LogicalType.ID, LogicalType.STRING, LogicalType.TEXT, LogicalType.INT, LogicalType.FLOAT, LogicalType.TIMESTAMP}
+)
+_UNGROUPABLE_TYPES = frozenset({LogicalType.JSON, LogicalType.BYTES})
+
+
+def _bind_aggregation(request: QueryRequest, root: BoundDataset) -> BoundAggregation:
+    """Check ``group_by`` and ``aggregate`` against the dataset: public fields, types the function can take,
+    and aliases that cannot be mistaken for a field.  ``group_by`` alone is the distinct combinations of its fields."""
+
+    keys: list[BoundField] = []
+    for index, name in enumerate(request.group_by):
+        key = bind_public_field(root, name, f"group_by[{index}]")
+        if key.spec.type in _UNGROUPABLE_TYPES:
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_INVALID,
+                f"Field '{name}' cannot be grouped by with its logical type '{key.spec.type.value}'.",
+                f"group_by[{index}]",
+            )
+        keys.append(key)
+    terms: list[BoundAggregateTerm] = []
+    seen: set[str] = {key.name for key in keys}
+    for index, term in enumerate(request.aggregate):
+        location = f"aggregate[{index}]"
+        if term.alias in root.spec.fields or term.alias in seen:
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_INVALID,
+                f"The alias '{term.alias}' is already a field of '{root.name}' or another alias: choose a name of its own.",
+                f"{location}.as",
+            )
+        seen.add(term.alias)
+        terms.append(_bind_aggregate_term(term, root, location))
+    return BoundAggregation(group_by=tuple(keys), terms=tuple(terms))
+
+
+def _bind_aggregate_term(term: AggregateTerm, root: BoundDataset, location: str) -> BoundAggregateTerm:
+    function = term.function
+    field: BoundField | None = None
+    if term.field is None:
+        if function is not AggregateFunction.COUNT:
+            _fail(ErrorCode.QUERY_AGGREGATE_INVALID, f"'{function.value}' needs a 'field'.", f"{location}.field")
+    else:
+        field = bind_public_field(root, term.field, f"{location}.field")
+        kind = field.spec.type
+        if function in {AggregateFunction.SUM, AggregateFunction.AVG} and kind not in _SUMMABLE_TYPES:
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_INVALID,
+                f"'{function.value}' needs a numeric field; '{field.name}' is '{kind.value}'.",
+                f"{location}.field",
+            )
+        if function in {AggregateFunction.MIN, AggregateFunction.MAX} and kind not in _EXTREME_TYPES:
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_INVALID,
+                f"'{function.value}' cannot take field '{field.name}' of type '{kind.value}'.",
+                f"{location}.field",
+            )
+        if function is AggregateFunction.COUNT_DISTINCT and kind in _UNGROUPABLE_TYPES:
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_INVALID,
+                f"'count_distinct' cannot take field '{field.name}' of type '{kind.value}'.",
+                f"{location}.field",
+            )
+    result = BoundField(
+        dataset_name=root.name,
+        scope=root.scope,
+        name=term.alias,
+        spec=FieldSpec(type=_result_type(function, field), description=f"{function.value} aggregate"),
+    )
+    return BoundAggregateTerm(function=function, field=field, alias=term.alias, result=result)
+
+
+def _result_type(function: AggregateFunction, field: BoundField | None) -> LogicalType:
+    if function in {AggregateFunction.COUNT, AggregateFunction.COUNT_DISTINCT}:
+        return LogicalType.INT
+    if function is AggregateFunction.AVG:
+        return LogicalType.FLOAT
+    assert field is not None
+    return field.spec.type              # sum of an int is an int, sum of a float a float; min/max keep the type
+
+
+def _bind_aggregate_order(terms: tuple[OrderTerm, ...], aggregation: BoundAggregation) -> tuple[BoundOrderTerm, ...]:
+    by_name = {key.name: key for key in aggregation.group_by}
+    by_name.update({term.alias: term.result for term in aggregation.terms})
+    bound: list[BoundOrderTerm] = []
+    for index, term in enumerate(terms):
+        field = by_name.get(term.field)
+        if field is None:
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_INVALID,
+                f"'order_by' of an aggregate query may name only its group keys or aggregate aliases, not '{term.field}'.",
+                f"order_by[{index}].field",
+            )
+        bound.append(BoundOrderTerm(field, term.direction))
+    return tuple(bound)
+
+
+def _with_group_tiebreaker(
+    terms: tuple[BoundOrderTerm, ...], aggregation: BoundAggregation
+) -> tuple[BoundOrderTerm, ...]:
+    """Groups have no ``id``: a group is identified by its keys, so ties break on them in ``group_by`` order."""
+
+    ordered = {term.field.name for term in terms}
+    return (*terms, *(BoundOrderTerm(key, SortDirection.ASC) for key in aggregation.group_by if key.name not in ordered))
+
+
+def _aggregation_payload(aggregation: BoundAggregation | None) -> dict[str, object]:
+    if aggregation is None:
+        return {}
+    return {
+        "group_by": [key.name for key in aggregation.group_by],
+        "aggregate": [
+            {"fn": term.function.value, "field": None if term.field is None else term.field.name, "as": term.alias}
+            for term in aggregation.terms
+        ],
+    }
 
 
 def _with_id_tiebreaker(

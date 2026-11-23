@@ -22,6 +22,7 @@ from ..query.registry import DEFAULT_TERMS
 from ..query.resolution import QuerySourceShape, SourceResolvedQuery
 from .contracts import PhysicalNode, PlanExplanation, PlannedQuery, explain_plan, plan_fingerprint
 from .operators import (
+    AggregateOperator,
     CombineDecision,
     CombineOperator,
     FilterOperator,
@@ -59,6 +60,7 @@ class FederatedPhysicalPlanner:
         self._filter = FilterOperator()
         self._order_page = OrderPageOperator(services)
         self._project = ProjectOperator()
+        self._aggregate = AggregateOperator(services)
         # Extension operators plug into the slot after filtering.
         self._extensions = tuple(extension.planning_operator(services) for extension in extensions)
 
@@ -81,6 +83,8 @@ class FederatedPhysicalPlanner:
                     location="where",
                 )
             )
+        if query.aggregation is not None:
+            return self._plan_aggregate(resolved)
         # 2. What each source will enforce.
         scan_plan = self._scan.plan(core, allow_complete=not claims)
         # 3. Each extension's legal strategies.
@@ -107,14 +111,26 @@ class FederatedPhysicalPlanner:
             node = strategy.build(node, notes)
         node = self._order_page.build(node, query, scans, page_pushed=scan_plan.page_pushed)
         node = self._project.build(node, query, scans)
+        return self._planned(resolved, node, "single_source" if len(scans) == 1 else "in_memory_record_assembly", decision.notes)
 
+    def _plan_aggregate(self, resolved: SourceResolvedQuery) -> PlannedQuery:
+        """An aggregate query: groups from the source or from YoDb, then their order and page (no project step: a
+        group row is exactly the keys and aliases)."""
+
+        node, scans, page_pushed = self._aggregate.build(resolved, self._scan, self._filter)
+        node = self._order_page.build(node, resolved.query, scans, page_pushed=page_pushed)
+        return self._planned(resolved, node, "single_source", ())
+
+    @staticmethod
+    def _planned(resolved: SourceResolvedQuery, node: PhysicalNode, plan_kind: str, notes: tuple[str, ...]) -> PlannedQuery:
+        query = resolved.query
         fingerprint = plan_fingerprint(node)
         explanation = PlanExplanation(
-            plan_kind="single_source" if len(scans) == 1 else "in_memory_record_assembly",
+            plan_kind=plan_kind,
             catalog_fingerprint=query.catalog_fingerprint,
             plan_fingerprint=fingerprint,
             nodes=explain_plan(node),
-            optimizer=decision.notes,
+            optimizer=notes,
             rules=query.rules,
         )
         return PlannedQuery(

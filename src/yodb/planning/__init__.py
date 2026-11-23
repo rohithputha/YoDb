@@ -1,7 +1,10 @@
 """Executable federated physical-plan contracts and source planning adapters."""
 
 from .contracts import (
+    AggregateMeasure,
+    AggregateSpec,
     AssemblyStep,
+    CoordinatorAggregate,
     CoordinatorFilter,
     CoordinatorSortPage,
     PhysicalNode,
@@ -31,6 +34,7 @@ from .contracts import (
 )
 from .adapter import CapabilityPlanningAdapter
 from .capabilities import (
+    AggregateCapability,
     BooleanOperator,
     GraphCapability,
     KeyLookupCapability,
@@ -57,6 +61,7 @@ from .optimizer import (
     optimize,
 )
 from .operators import (
+    AggregateOperator,
     Claim,
     CombineDecision,
     CombineOperator,
@@ -97,6 +102,11 @@ from .statistics import (
 )
 
 __all__ = [
+    "AggregateCapability",
+    "AggregateMeasure",
+    "AggregateOperator",
+    "AggregateSpec",
+    "CoordinatorAggregate",
     "Candidates",
     "Claim",
     "CombineDecision",

@@ -38,6 +38,8 @@ Run it with `yodb query catalog/ '<json>'`, or with `db.query(...)` from
 | `order_by` | No | The sort order. Default: by `id` |
 | `page` | No | How many rows: `{"first": 25}`. Default 100, at most 500 |
 | `traverse` | No | Follow a relationship to another dataset. See [Joins](/query/joins) |
+| `group_by` | No | Fields to group by. See "`aggregate` and `group_by`" below |
+| `aggregate` | No | Counts, sums and the like, each with an alias. See below |
 | `constraints` | No | Extra bounds on the query. See "Constraints" below |
 
 Any other key is refused with `query_shape_invalid`. YoDb never ignores a key
@@ -206,6 +208,54 @@ time you run the query. With no `order_by`, rows are ordered by `id`.
 500. There is no "next page": to see different rows, narrow the filter or
 change the order. `page` takes no other key.
 
+## `aggregate` and `group_by`: count, sum, group
+
+```json
+{"from": {"dataset": "order"},
+ "where": {"field": "status", "op": "ne", "value": "cancelled"},
+ "group_by": ["region"],
+ "aggregate": [{"fn": "count", "as": "orders"},
+               {"fn": "sum", "field": "amount", "as": "revenue"}],
+ "order_by": [{"field": "revenue", "direction": "desc"}],
+ "page": {"first": 10}}
+```
+
+An aggregate query returns **groups, not records**: each row holds the `group_by`
+fields and the aliases, and there is no `id`. `where` filters the rows before they
+are grouped.
+
+| `fn` | `field` | Result |
+| --- | --- | --- |
+| `count` | optional | Rows in the group; with a `field`, the rows where it is not null |
+| `count_distinct` | required | Distinct non-null values |
+| `sum`, `avg` | required, `int` or `float` | The total (an `int` stays an `int`); the mean (always a `float`) |
+| `min`, `max` | required, orderable | The smallest or largest value; text compares in code-point order |
+
+The rules are SQL's. Null values are skipped by every function except `count`
+without a field, and `sum`, `avg`, `min` and `max` of no values are null. Rows with a
+null group key form one group. Without `group_by` the whole dataset is one group,
+and one row comes back even when no row matches (`count` is 0, the rest null).
+`group_by` without `aggregate` returns the distinct combinations of its fields.
+
+- `as` names the result column. It must be letters, digits and underscores, and
+  must not be a field of the dataset or another alias.
+- `group_by` fields must be public and cannot be `json` or `bytes`.
+- `order_by` may name only `group_by` fields and aliases; ties break by the
+  `group_by` fields, in order. `page.first` counts groups.
+- `select` cannot be combined with these keys.
+- v1 limits: every field the query uses must live in the dataset's identity source;
+  an aggregate cannot be combined with `traverse` or with a semantic or similarity
+  condition. These are refused with `query_aggregate_unsupported`; a rule the
+  query breaks is `query_aggregate_invalid`.
+
+The database computes the groups when it can do so exactly: the whole filter must
+run in the database, and it must support the function and the field types (SQLite
+groups only the types it compares exactly, so a timestamp key or extreme is computed
+by YoDb). Otherwise YoDb reads the rows the database can filter and groups them
+itself, under the same row limit as any other read (10,000 rows per source by
+default). `explain` shows which: `aggregate at source` on the scan, or a
+`coordinator_aggregate` node.
+
 ## `traverse`: follow a relationship
 
 `traverse` joins the dataset to another one over a relationship declared in the
@@ -282,7 +332,7 @@ code.
 
 ## What a query cannot do yet
 
-- Count, sum or group. There is no aggregation.
+- Aggregate across a join, across sources, or over a semantic or similarity condition.
 - Fetch a next page.
 - Follow more than one relationship.
 - Compare two fields with each other.

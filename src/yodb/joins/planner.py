@@ -79,6 +79,12 @@ class JoinPlanner:
         )
 
     def plan(self, raw: Mapping[str, Any], active: CatalogEvaluation) -> PlannedQuery:
+        if "aggregate" in raw or "group_by" in raw:
+            _fail(
+                ErrorCode.QUERY_AGGREGATE_UNSUPPORTED,
+                "An aggregate query cannot traverse a relationship yet: aggregate one dataset on its own.",
+                "traverse",
+            )
         root_raw, step = split_traverse(raw)
         catalog = active.catalog
         root_dataset = _root_dataset(root_raw)

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 import math
 import re
 from typing import Any
 
-from ..catalog import SourceKind
+from ..catalog import LogicalType, SourceKind
 from ..compilation import CompiledPostgresQuery, CompiledQuery
 from ..connections import SourceConnectionAdapter
 from ..errors import ErrorCode, ErrorDetail, QueryExecutionError, YoDbError
@@ -104,7 +105,8 @@ class PostgresQueryExecutionAdapter:
             ) from error
 
         fields = tuple(column.logical_field for column in query.output_columns)
-        return tuple(_logical_row(fields, row, query.source_name) for row in rows)
+        types = tuple(column.logical_type for column in query.output_columns)
+        return tuple(_logical_row(fields, row, query.source_name, types) for row in rows)
 
 
 _LOADABLE = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -139,6 +141,7 @@ def _logical_row(
     fields: tuple[str, ...],
     row: Any,
     source_name: str,
+    types: tuple[LogicalType | None, ...] | None = None,
 ) -> LogicalRow:
     if not isinstance(row, (tuple, list)) or len(row) != len(fields):
         raise QueryExecutionError(
@@ -149,10 +152,11 @@ def _logical_row(
                 source_name=source_name,
             )
         )
-    return {name: _normalize(value) for name, value in zip(fields, row, strict=True)}
+    kinds = types if types is not None else (None,) * len(fields)
+    return {name: _normalize(value, kind) for name, value, kind in zip(fields, row, kinds, strict=True)}
 
 
-def _normalize(value: Any) -> Any:
+def _normalize(value: Any, logical_type: Any = None) -> Any:
     """Return timestamps as UTC-aware, matching how query values are bound.
 
     A ``timestamp`` (without time zone) column arrives naive; comparing it with
@@ -162,4 +166,10 @@ def _normalize(value: Any) -> Any:
 
     if isinstance(value, datetime):
         return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    if isinstance(value, Decimal):
+        # PostgreSQL's SUM of a bigint and AVG of an integer are numeric: an aggregate column is typed, so say so.
+        if logical_type is LogicalType.INT:
+            return int(value)
+        if logical_type is LogicalType.FLOAT:
+            return float(value)
     return value

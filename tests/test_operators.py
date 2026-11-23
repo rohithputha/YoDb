@@ -11,6 +11,7 @@ from yodb.execution.federated import FederatedPlanExecutor
 from yodb.execution.operators import default_handlers, ExecutionContext, Run
 from yodb.operators import OperatorCatalog, OperatorCategory, OperatorKind, OPERATORS
 from yodb.planning import (
+    CoordinatorAggregate,
     CoordinatorFilter,
     CoordinatorSortPage,
     describe_capabilities,
@@ -56,9 +57,9 @@ class CatalogTests(unittest.TestCase):
     def test_what_exists_today_is_marked_implemented_and_the_rest_planned(self) -> None:
         self.assertEqual(
             {s.kind for s in OPERATORS.implemented()},
-            {K.SCAN, K.FILTER, K.PROJECT, K.ORDER, K.LIMIT, K.COMBINE, K.JOIN, K.KEY_LOOKUP, K.VECTOR_SEARCH, K.SEMANTIC_FILTER, K.TRAVERSE, K.SIMILARITY_SEARCH},
+            {K.SCAN, K.FILTER, K.PROJECT, K.ORDER, K.LIMIT, K.COMBINE, K.JOIN, K.KEY_LOOKUP, K.VECTOR_SEARCH, K.SEMANTIC_FILTER, K.TRAVERSE, K.SIMILARITY_SEARCH, K.AGGREGATE, K.GROUP_BY, K.DISTINCT},
         )
-        self.assertEqual({s.kind for s in OPERATORS.planned()}, {K.AGGREGATE, K.GROUP_BY, K.DISTINCT, K.UNION})
+        self.assertEqual({s.kind for s in OPERATORS.planned()}, {K.UNION})
 
     def test_implemented_operators_name_strategies_and_planned_ones_do_not(self) -> None:
         for spec in OPERATORS:
@@ -75,7 +76,7 @@ class CatalogTests(unittest.TestCase):
         for bad in (
             specs[1:],                                                              # a kind without a spec
             [replace(spec, strategies=())] + specs[1:],                             # implemented, no strategies
-            [replace(OPERATORS.get(K.AGGREGATE), strategies=("x",))] + [s for s in specs if s.kind is not K.AGGREGATE],  # planned, claims strategies
+            [replace(OPERATORS.get(K.UNION), strategies=("x",))] + [s for s in specs if s.kind is not K.UNION],  # planned, claims strategies
             [replace(spec, requires=(K.SCAN,))] + specs[1:],                        # requires itself
         ):
             with self.assertRaises(ValueError):
@@ -98,8 +99,15 @@ class PostgresViewTests(unittest.TestCase):
 
     def test_planned_operators_are_unavailable_everywhere(self) -> None:
         view = by_kind(POSTGRES_CAPABILITIES)
-        for kind in (K.AGGREGATE, K.GROUP_BY, K.DISTINCT, K.UNION):
-            self.assertEqual((view[kind].level, view[kind].strategies), (S.UNAVAILABLE, ()))
+        self.assertEqual((view[K.UNION].level, view[K.UNION].strategies), (S.UNAVAILABLE, ()))
+
+    def test_postgres_computes_aggregates_itself_and_a_source_without_the_capability_leaves_them_to_yodb(self) -> None:
+        view = by_kind(POSTGRES_CAPABILITIES)
+        for kind in (K.AGGREGATE, K.GROUP_BY, K.DISTINCT):
+            self.assertEqual((view[kind].level, view[kind].strategies), (S.SOURCE, ("push_to_source", "run_in_yodb")))
+        limited = by_kind(LIMITED)
+        for kind in (K.AGGREGATE, K.GROUP_BY, K.DISTINCT):
+            self.assertEqual((limited[kind].level, limited[kind].strategies), (S.COORDINATOR, ("run_in_yodb",)))
 
     def test_strategies_offered_never_exceed_the_catalog(self) -> None:
         for caps in (POSTGRES_CAPABILITIES, LIMITED):
@@ -254,7 +262,7 @@ class ExecutionHandlerTests(unittest.TestCase):
     def test_every_core_node_type_has_a_default_handler(self) -> None:
         self.assertEqual(
             set(default_handlers()),
-            {RemoteScan, RecordAssembly, CoordinatorFilter, CoordinatorSortPage, ResultProject, HashJoin, EdgeJoin, GraphEdgeScan},
+            {RemoteScan, RecordAssembly, CoordinatorFilter, CoordinatorAggregate, CoordinatorSortPage, ResultProject, HashJoin, EdgeJoin, GraphEdgeScan},
         )
 
     def test_an_extension_contributes_the_handlers_for_the_nodes_it_adds(self) -> None:

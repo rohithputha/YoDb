@@ -186,6 +186,15 @@ def resolve_query_sources(
         for source in ordered_sources[1:]
     )
     shape = QuerySourceShape.SINGLE_SOURCE if len(ordered_sources) == 1 else QuerySourceShape.MULTI_SOURCE
+    if query.aggregation is not None and shape is QuerySourceShape.MULTI_SOURCE:
+        elsewhere = sorted(
+            name for name, source in field_sources_by_name(source_fields).items() if source != resolution.identity_source
+        )
+        _fail(
+            ErrorCode.QUERY_AGGREGATE_UNSUPPORTED,
+            "An aggregate query must read every field it uses (group keys, aggregated fields, filters) from the "
+            f"dataset's identity source '{resolution.identity_source}'; {', '.join(elsewhere)} live in another source.",
+        )
     extra_names: dict[str, set[str]] = defaultdict(set)
     for term in extension_terms(query.where):
         for name in terms.for_bound(term).extra_sources(term, catalog, query.root.name):
@@ -204,6 +213,9 @@ def resolve_query_sources(
         extension_sources=extension_sources,
     )
 
+
+def field_sources_by_name(source_fields: dict[str, dict[str, frozenset[FieldUse]]]) -> dict[str, str]:
+    return {name: source for source, fields in source_fields.items() for name in fields}
 
 def _embedding_fields(catalog, source_name: str, dataset_name: str) -> set[str]:
     source = catalog.sources.get(source_name)
@@ -314,13 +326,22 @@ def _collect_field_uses(query: BoundQuery, terms: TermRegistry) -> dict[str, set
     uses["id"].add(FieldUse.IDENTITY)
     for field in query.select:
         uses[field.name].add(FieldUse.PROJECTION)
+    aliases: frozenset[str] = frozenset()
+    if query.aggregation is not None:
+        for key in query.aggregation.group_by:
+            uses[key.name].add(FieldUse.PROJECTION)
+        for term in query.aggregation.terms:
+            if term.field is not None:
+                uses[term.field.name].add(FieldUse.PROJECTION)
+        aliases = frozenset(term.alias for term in query.aggregation.terms)
     for field in _filter_fields(query.where):
         uses[field.name].add(FieldUse.FILTER)
     for term in extension_terms(query.where):
         for field, use in terms.for_bound(term).uses(term):
             uses[field.name].add(use)
     for term in query.order_by:
-        uses[term.field.name].add(FieldUse.ORDER)
+        if term.field.name not in aliases:       # an aggregate alias orders the result; it is not a source field
+            uses[term.field.name].add(FieldUse.ORDER)
     return uses
 
 

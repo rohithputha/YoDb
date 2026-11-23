@@ -96,6 +96,22 @@ class OrderTerm:
     direction: SortDirection
 
 
+class AggregateFunction(str, Enum):
+    COUNT = "count"
+    COUNT_DISTINCT = "count_distinct"
+    SUM = "sum"
+    MIN = "min"
+    MAX = "max"
+    AVG = "avg"
+
+@dataclass(frozen=True)
+class AggregateTerm:
+    """One requested aggregate before catalog binding: ``function(field)`` reported as ``alias``."""
+
+    function: AggregateFunction
+    field: str | None
+    alias: str
+
 @dataclass(frozen=True)
 class PageRequest:
     first: int | None = None
@@ -119,6 +135,8 @@ class QueryRequest:
     order_by: tuple[OrderTerm, ...] = ()
     page: PageRequest | None = None
     constraints: QueryConstraints | None = None
+    group_by: tuple[str, ...] = ()
+    aggregate: tuple[AggregateTerm, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -179,6 +197,28 @@ class BoundOrderTerm:
 
 
 @dataclass(frozen=True)
+class BoundAggregateTerm:
+    """A validated aggregate.  ``result`` is the field its value has in the result rows (named by the alias,
+    typed by the function), so an ``order_by`` on the alias binds like an order on any other field."""
+
+    function: AggregateFunction
+    field: BoundField | None
+    alias: str
+    result: BoundField
+
+@dataclass(frozen=True)
+class BoundAggregation:
+    """The grouping of an aggregate query: its group keys (possibly none: one row for the whole dataset) and
+    its aggregates (possibly none: the distinct combinations of the keys)."""
+
+    group_by: tuple[BoundField, ...]
+    terms: tuple[BoundAggregateTerm, ...]
+
+    @property
+    def output_names(self) -> tuple[str, ...]:
+        return (*(key.name for key in self.group_by), *(term.alias for term in self.terms))
+
+@dataclass(frozen=True)
 class RuleUse:
     """One rule a query used, directly or through another rule."""
 
@@ -206,4 +246,6 @@ class BoundQuery:
     # Whether the caller asked for an order (``order_by`` always ends with the ``id`` tiebreaker; without a
     # caller's order it is only that, and a ranking operator may order the page by relevance instead).
     explicit_order: bool = True
+    # Set for an aggregate query: its rows are groups, not records (``select`` is empty and rows carry no ``id``).
+    aggregation: BoundAggregation | None = None
 

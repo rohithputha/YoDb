@@ -3,6 +3,18 @@
 ## 0.2.0 (unreleased)
 
 ### Added
+- Aggregates: `aggregate` (`count`, `count_distinct`, `sum`, `min`, `max`, `avg`, each with an alias) and
+  `group_by`, which on its own returns the distinct combinations of its fields. The result is groups, not
+  records: rows carry the keys and aliases and no `id`; `order_by` may name only keys and aliases, ties break
+  by the keys, and `page.first` counts groups. Semantics are SQL's (nulls skipped, null keys one group, one row
+  for an empty whole-dataset aggregate). The database runs `GROUP BY` when the whole filter runs there and it
+  supports the function and field types (both SQL compilers share the statement builder); otherwise YoDb groups
+  the rows it can read, under the per-source row guard. `AGGREGATE`, `GROUP_BY` and `DISTINCT` are now
+  implemented operators (`push_to_source`, `run_in_yodb`), `SourceCapabilities.aggregate` declares what a
+  source computes, and `explain` shows `aggregate at source` or a `coordinator_aggregate`. v1 refuses an
+  aggregate with `traverse`, a semantic or similarity condition, or fields in more than one source
+  (`query_aggregate_unsupported`); rule violations are `query_aggregate_invalid`. The MCP query guide and
+  docs describe the form.
 - SQLite as a source: `kind: sqlite` in `sources.yaml`, with `YODB_CONN_<REF>` holding the database file's path
   (also `sqlite:///relative.db`, `sqlite:////absolute.db` or a `file:` URI). The file is opened read-only
   (`mode=ro`, `PRAGMA query_only`) with one connection per thread; the statement time limit is enforced with a
